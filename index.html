@@ -158,7 +158,7 @@
       <div id="adminReportTab" class="hidden">
         <div class="field"><label>วันที่รายงาน</label><input id="reportDate" type="date"></div>
         <div class="row-actions">
-          <button class="secondary" onclick="previewLineReport()">ดูตัวอย่าง</button>
+          <button class="secondary" onclick="previewLineReport()">ดูรายงานรูปแบบเดิม</button>
           <button class="secondary save" onclick="sendLineReport()">ส่ง LINE Report</button>
         </div>
         <pre id="reportPreview">ยังไม่ได้สร้างรายงาน</pre>
@@ -287,7 +287,8 @@ async function recordNextAction(){
 async function loadHistory(){
  const month=document.getElementById("historyMonth").value||bkkDate().slice(0,7),box=document.getElementById("historyList");
  try{
-  const r=await api("employee_month",{month}); const rows=r.rows||[];
+  const r=await api("employee_month",{month});
+  const rows=(r.rows||[]).filter(x => x.first_in_at || x.last_out_at || Number(x.paid_work_hours||0) > 0);
   box.innerHTML=rows.length?rows.map(x=>`<div class="event" style="display:block">
    <div style="display:flex;justify-content:space-between"><b>${thaiDate(x.work_date)}</b><span class="muted">${esc(x.work_status||x.schedule_status||"—")}</span></div>
    <div class="muted" style="margin-top:6px">เข้า ${timeTH(x.first_in_at)} • ออก ${timeTH(x.last_out_at)}<br>ทำงาน ${hours(x.paid_work_hours)} • ขาด ${hours(x.short_hours)} • เกิน ${hours(x.over_hours)}</div>
