@@ -157,8 +157,15 @@
 
       <div id="adminReportTab" class="hidden">
         <div class="field"><label>วันที่รายงาน</label><input id="reportDate" type="date"></div>
+        <div class="field">
+          <label>ประเภทรายงาน</label>
+          <select id="reportType">
+            <option value="MIDDAY">รายงาน 13:00</option>
+            <option value="END_DAY">รายงาน 22:00</option>
+          </select>
+        </div>
         <div class="row-actions">
-          <button class="secondary" onclick="previewLineReport()">ดูรายงานรูปแบบเดิม</button>
+          <button class="secondary" onclick="previewLineReport()">ดูตัวอย่างรายงาน</button>
           <button class="secondary save" onclick="sendLineReport()">ส่ง LINE Report</button>
         </div>
         <pre id="reportPreview">ยังไม่ได้สร้างรายงาน</pre>
@@ -350,14 +357,32 @@ async function adminSaveSchedule(){
  await loadAdminDaily();alert("บันทึกและคำนวณใหม่แล้ว");
 }
 
-async function previewLineReport(){
- const r=await api("admin_report_preview",{date:document.getElementById("reportDate").value});
- document.getElementById("reportPreview").textContent=r.message||"";
+async function previewLineReport() {
+  const r = await api("admin_report_preview", {
+    date: document.getElementById("reportDate").value,
+    reportType: document.getElementById("reportType").value
+  });
+
+  document.getElementById("reportPreview").textContent =
+    r.message || "";
 }
-async function sendLineReport(){
- if(!confirm("ยืนยันส่ง LINE Report วันนี้"))return;
- const r=await api("admin_report_send",{date:document.getElementById("reportDate").value});
- document.getElementById("reportPreview").textContent=r.message||"ส่งสำเร็จ";alert("ส่งแล้ว");
+async function sendLineReport() {
+  const reportType = document.getElementById("reportType").value;
+  const label = reportType === "MIDDAY"
+    ? "รายงาน 13:00"
+    : "รายงาน 22:00";
+
+  if (!confirm(`ยืนยันส่ง ${label}`)) return;
+
+  const r = await api("admin_report_send", {
+    date: document.getElementById("reportDate").value,
+    reportType
+  });
+
+  document.getElementById("reportPreview").textContent =
+    r.message || "ส่งสำเร็จ";
+
+  alert(`ส่ง ${label} แล้ว`);
 }
 
 function geo(){return new Promise((ok,no)=>navigator.geolocation.getCurrentPosition(ok,e=>no(new Error("ไม่สามารถอ่าน GPS ได้")),{enableHighAccuracy:true,timeout:12000,maximumAge:0}))}
