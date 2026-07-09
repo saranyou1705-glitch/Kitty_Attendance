@@ -111,6 +111,7 @@
         <button class="active" onclick="showAdminTab('daily',this)">รายวัน</button>
         <button onclick="showAdminTab('attendance',this)">แก้เวลา</button>
         <button onclick="showAdminTab('schedule',this)">วันลา/หยุด</button>
+        <button onclick="showAdminTab('monthly',this)">Monthly Summary</button>
         <button onclick="showAdminTab('report',this)">LINE Report</button>
       </div>
 
@@ -153,6 +154,16 @@
         </div>
         <div class="field"><label>เหตุผล</label><textarea id="scheduleReason"></textarea></div>
         <button class="secondary save" onclick="adminSaveSchedule()">บันทึกและคำนวณใหม่</button>
+      </div>
+
+
+      <div id="adminMonthlyTab" class="hidden">
+        <div class="field">
+          <label>เดือน</label>
+          <input id="monthlySummaryMonth" type="month">
+        </div>
+        <button class="secondary" onclick="loadMonthlySummary()">โหลด Monthly Summary</button>
+        <div id="monthlySummaryResult" style="margin-top:12px"></div>
       </div>
 
       <div id="adminReportTab" class="hidden">
@@ -205,6 +216,7 @@ async function init(){
   }
   const d=bkkDate(); document.getElementById("historyMonth").value=d.slice(0,7);
   ["adminDate","attendanceDate","scheduleDate","reportDate"].forEach(id=>{const e=document.getElementById(id);if(e)e.value=d});
+  document.getElementById("monthlySummaryMonth").value=d.slice(0,7);
   await loadToday(); await loadHistory(); setStatus("พร้อมใช้งาน","ok");
  }catch(e){setStatus(errText(e),"err");console.error(e)}
 }
@@ -311,7 +323,7 @@ async function loadAdminBootstrap(){
 }
 
 function showAdminTab(name,btn){
- ["daily","attendance","schedule","report"].forEach(x=>document.getElementById("admin"+cap(x)+"Tab").classList.toggle("hidden",x!==name));
+ ["daily","attendance","schedule","monthly","report"].forEach(x=>document.getElementById("admin"+cap(x)+"Tab").classList.toggle("hidden",x!==name));
  document.querySelectorAll(".admin-tabs button").forEach(x=>x.classList.remove("active"));btn.classList.add("active");
 }
 
@@ -335,9 +347,13 @@ async function loadAdminEmployeeDay(){
 }
 
 async function adminEditEvent(id,current){
- const v=prompt("กรอกวันเวลาใหม่รูปแบบ YYYY-MM-DDTHH:mm",new Date(current).toISOString().slice(0,16)); if(!v)return;
+ const defaultValue=toBangkokLocalInput(current);
+ const v=prompt("กรอกวันเวลาไทย รูปแบบ YYYY-MM-DDTHH:mm",defaultValue);
+ if(!v)return;
  const reason=prompt("เหตุผลในการแก้ไข"); if(!reason)return;
- await api("admin_update_event",{eventId:id,eventAt:new Date(v).toISOString(),reason}); await loadAdminEmployeeDay(); await loadAdminDaily();
+ const eventAt=bangkokLocalToIso(v);
+ await api("admin_update_event",{eventId:id,eventAt,reason});
+ await loadAdminEmployeeDay(); await loadAdminDaily();
 }
 
 async function adminDeleteEvent(id){
@@ -347,7 +363,7 @@ async function adminDeleteEvent(id){
 
 async function adminAddEvent(){
  const reason=document.getElementById("newEventReason").value.trim(); if(!reason)return alert("กรุณากรอกเหตุผล");
- await api("admin_add_event",{employeeId:document.getElementById("attendanceEmployee").value,eventType:document.getElementById("newEventType").value,eventAt:new Date(document.getElementById("newEventAt").value).toISOString(),reason});
+ await api("admin_add_event",{employeeId:document.getElementById("attendanceEmployee").value,eventType:document.getElementById("newEventType").value,eventAt:bangkokLocalToIso(document.getElementById("newEventAt").value),reason});
  await loadAdminEmployeeDay();await loadAdminDaily();alert("เพิ่มและคำนวณใหม่แล้ว");
 }
 
@@ -355,6 +371,31 @@ async function adminSaveSchedule(){
  const reason=document.getElementById("scheduleReason").value.trim();if(!reason)return alert("กรุณากรอกเหตุผล");
  await api("admin_update_schedule",{employeeId:document.getElementById("scheduleEmployee").value,workDate:document.getElementById("scheduleDate").value,scheduleStatus:document.getElementById("scheduleStatus").value,reason});
  await loadAdminDaily();alert("บันทึกและคำนวณใหม่แล้ว");
+}
+
+
+async function loadMonthlySummary(){
+ const month=document.getElementById("monthlySummaryMonth").value;
+ const box=document.getElementById("monthlySummaryResult");
+ try{
+  box.innerHTML='<div class="status">กำลังโหลด…</div>';
+  const r=await api("admin_monthly_summary",{month});
+  const rows=r.rows||[];
+  box.innerHTML=rows.length?`<table class="table">
+   <thead><tr>
+    <th>พนักงาน</th><th>วันทำงาน</th><th>ชั่วโมงทำงาน</th>
+    <th>ขาด</th><th>เกิน</th><th>ชดเชย</th><th>สุทธิ</th>
+   </tr></thead>
+   <tbody>${rows.map(x=>`<tr>
+    <td>${esc(x.employee_code)}<br>${esc(x.name)}</td>
+    <td>${x.work_days}</td>
+    <td>${hours(x.paid_work_hours)}</td>
+    <td>${hours(x.short_hours)}</td>
+    <td>${hours(x.over_hours)}</td>
+    <td>${hours(x.makeup_hours)}</td>
+    <td>${hours(x.net_hours)}</td>
+   </tr>`).join("")}</tbody></table>`:'<div class="status">ไม่พบข้อมูล</div>';
+ }catch(e){box.innerHTML=`<div class="status err">${esc(errText(e))}</div>`}
 }
 
 async function previewLineReport() {
@@ -383,6 +424,22 @@ async function sendLineReport() {
     r.message || "ส่งสำเร็จ";
 
   alert(`ส่ง ${label} แล้ว`);
+}
+
+
+function toBangkokLocalInput(value){
+ if(!value)return "";
+ const d=new Date(value);
+ const parts=new Intl.DateTimeFormat("en-CA",{
+  timeZone:"Asia/Bangkok",year:"numeric",month:"2-digit",day:"2-digit",
+  hour:"2-digit",minute:"2-digit",hour12:false
+ }).formatToParts(d);
+ const v=Object.fromEntries(parts.map(p=>[p.type,p.value]));
+ return `${v.year}-${v.month}-${v.day}T${v.hour}:${v.minute}`;
+}
+function bangkokLocalToIso(value){
+ if(!value)throw new Error("กรุณากรอกวันและเวลา");
+ return new Date(`${value}:00+07:00`).toISOString();
 }
 
 function geo(){return new Promise((ok,no)=>navigator.geolocation.getCurrentPosition(ok,e=>no(new Error("ไม่สามารถอ่าน GPS ได้")),{enableHighAccuracy:true,timeout:12000,maximumAge:0}))}
