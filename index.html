@@ -1,0 +1,738 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#06c755">
+  <title>Kitty Attendance</title>
+
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+
+  <style>
+    :root {
+      --line: #06c755;
+      --dark: #0f172a;
+      --muted: #64748b;
+      --bg: #f1f5f9;
+      --card: #ffffff;
+      --danger: #dc2626;
+      --warning: #ea580c;
+      --blue: #2563eb;
+      --border: #e2e8f0;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--dark);
+      background: var(--bg);
+    }
+
+    button, input { font: inherit; }
+
+    .hero {
+      padding: calc(22px + env(safe-area-inset-top)) 18px 46px;
+      color: white;
+      background: linear-gradient(135deg, #06c755, #047857);
+    }
+
+    .hero-inner {
+      max-width: 560px;
+      margin: 0 auto;
+    }
+
+    .hero h1 {
+      margin: 0;
+      font-size: 26px;
+    }
+
+    .hero p {
+      margin: 7px 0 0;
+      opacity: .9;
+      font-size: 14px;
+    }
+
+    main {
+      max-width: 560px;
+      margin: -28px auto 30px;
+      padding: 0 14px calc(24px + env(safe-area-inset-bottom));
+    }
+
+    .card {
+      padding: 18px;
+      margin-bottom: 14px;
+      border-radius: 20px;
+      background: var(--card);
+      box-shadow: 0 12px 30px rgba(15, 23, 42, .10);
+    }
+
+    .hidden { display: none !important; }
+
+    .status-box {
+      padding: 13px 14px;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      background: #f8fafc;
+      line-height: 1.55;
+      font-size: 14px;
+    }
+
+    .status-box.error {
+      color: #991b1b;
+      border-color: #fecaca;
+      background: #fef2f2;
+    }
+
+    .status-box.success {
+      color: #166534;
+      border-color: #bbf7d0;
+      background: #f0fdf4;
+    }
+
+    .profile {
+      display: grid;
+      grid-template-columns: 54px 1fr auto;
+      gap: 12px;
+      align-items: center;
+    }
+
+    .avatar {
+      width: 54px;
+      height: 54px;
+      border-radius: 50%;
+      object-fit: cover;
+      background: #e2e8f0;
+    }
+
+    .name {
+      margin: 0;
+      font-weight: 800;
+      font-size: 18px;
+    }
+
+    .sub {
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .badge {
+      padding: 6px 9px;
+      border-radius: 999px;
+      color: white;
+      background: var(--blue);
+      font-size: 11px;
+      font-weight: 800;
+    }
+
+    .today-title {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      align-items: center;
+      margin-bottom: 13px;
+    }
+
+    .today-title h2 {
+      margin: 0;
+      font-size: 18px;
+    }
+
+    .today-title span {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .schedule {
+      padding: 12px;
+      margin-bottom: 13px;
+      border-radius: 14px;
+      background: #ecfdf5;
+      color: #065f46;
+      line-height: 1.55;
+      font-size: 14px;
+    }
+
+    .buttons {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .action {
+      min-height: 58px;
+      padding: 11px;
+      border: 0;
+      border-radius: 15px;
+      color: white;
+      font-weight: 800;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .action:disabled {
+      cursor: not-allowed;
+      opacity: .42;
+    }
+
+    .in { background: #16a34a; }
+    .break-out { background: #ea580c; }
+    .break-in { background: #2563eb; }
+    .out { background: #dc2626; }
+
+    .timeline {
+      display: grid;
+      gap: 9px;
+    }
+
+    .event {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 11px 12px;
+      border: 1px solid var(--border);
+      border-radius: 13px;
+      background: #fff;
+      font-size: 14px;
+    }
+
+    .event-time {
+      color: var(--muted);
+      white-space: nowrap;
+    }
+
+    .summary-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 9px;
+    }
+
+    .metric {
+      padding: 12px;
+      border-radius: 13px;
+      background: #f8fafc;
+      border: 1px solid var(--border);
+    }
+
+    .metric-label {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .metric-value {
+      margin-top: 4px;
+      font-size: 17px;
+      font-weight: 800;
+    }
+
+    .loading {
+      display: inline-block;
+      width: 18px;
+      height: 18px;
+      margin-right: 8px;
+      vertical-align: -4px;
+      border: 3px solid rgba(255,255,255,.45);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spin .8s linear infinite;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .secondary {
+      width: 100%;
+      padding: 11px 12px;
+      margin-top: 12px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      color: var(--dark);
+      background: white;
+      font-weight: 700;
+    }
+
+    .footer-note {
+      color: var(--muted);
+      text-align: center;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+  </style>
+</head>
+
+<body>
+  <header class="hero">
+    <div class="hero-inner">
+      <h1>Kitty Attendance</h1>
+      <p>ระบบลงเวลาผ่าน LINE LIFF และ Supabase</p>
+    </div>
+  </header>
+
+  <main>
+    <section class="card">
+      <div id="appStatus" class="status-box">
+        กำลังเปิดระบบ…
+      </div>
+    </section>
+
+    <section id="profileCard" class="card hidden">
+      <div class="profile">
+        <img id="avatar" class="avatar" alt="">
+        <div>
+          <p id="employeeName" class="name">—</p>
+          <div id="employeeMeta" class="sub">—</div>
+        </div>
+        <span id="adminBadge" class="badge hidden">ADMIN</span>
+      </div>
+    </section>
+
+    <section id="attendanceCard" class="card hidden">
+      <div class="today-title">
+        <h2>ลงเวลาวันนี้</h2>
+        <span id="todayLabel"></span>
+      </div>
+
+      <div id="scheduleBox" class="schedule">กำลังโหลดตารางงาน…</div>
+
+      <div class="buttons">
+        <button id="btnIn" class="action in" onclick="recordAttendance('IN')">เข้างาน</button>
+        <button id="btnBreakOut" class="action break-out" onclick="recordAttendance('BREAK_OUT')">ออกพัก</button>
+        <button id="btnBreakIn" class="action break-in" onclick="recordAttendance('BREAK_IN')">กลับจากพัก</button>
+        <button id="btnOut" class="action out" onclick="recordAttendance('OUT')">ออกงาน</button>
+      </div>
+
+      <button class="secondary" onclick="loadToday()">รีเฟรชข้อมูล</button>
+    </section>
+
+    <section id="timelineCard" class="card hidden">
+      <div class="today-title">
+        <h2>รายการวันนี้</h2>
+        <span id="eventCount">0 รายการ</span>
+      </div>
+      <div id="timeline" class="timeline"></div>
+    </section>
+
+    <section id="summaryCard" class="card hidden">
+      <div class="today-title">
+        <h2>สรุปวันนี้</h2>
+      </div>
+      <div id="summaryGrid" class="summary-grid"></div>
+    </section>
+
+    <p class="footer-note">
+      ต้องเปิดผ่าน LINE LIFF เพื่อยืนยันตัวตน<br>
+      ระบบจะไม่เก็บ Supabase Service Role Key ไว้ในหน้าเว็บ
+    </p>
+  </main>
+
+  <script>
+    "use strict";
+
+    const CONFIG = Object.freeze({
+      LIFF_ID: "2010336238-Ub6d565R",
+      API_URL: "https://rlqecfzddxpywbbbiirg.supabase.co/functions/v1/rapid-processor",
+      REQUEST_TIMEOUT_MS: 15000
+    });
+
+    const EVENT_LABELS = {
+      IN: "เข้างาน",
+      BREAK_OUT: "ออกพัก",
+      BREAK_IN: "กลับจากพัก",
+      OUT: "ออกงาน",
+      DAY_IN: "เริ่มวัน",
+      DAY_OUT: "จบวัน",
+      BRANCH_IN: "เข้าสาขา",
+      BRANCH_OUT: "ออกจากสาขา",
+      WORK_IN: "เริ่มงาน",
+      WORK_OUT: "จบงาน",
+      REFILL_IN: "เริ่มเติมสินค้า",
+      REFILL_OUT: "จบเติมสินค้า"
+    };
+
+    let bootstrapData = null;
+    let todayData = null;
+    let saving = false;
+
+    document.addEventListener("DOMContentLoaded", initializeApp);
+
+    async function initializeApp() {
+      try {
+        setStatus("กำลังเชื่อมต่อ LINE LIFF…");
+
+        await liff.init({ liffId: CONFIG.LIFF_ID });
+
+        if (!liff.isInClient()) {
+          throw new Error("กรุณาเปิดระบบจากเมนูในแอป LINE เท่านั้น");
+        }
+
+        if (!liff.isLoggedIn()) {
+          liff.login();
+          return;
+        }
+
+        bootstrapData = await callApi("bootstrap");
+        renderProfile(bootstrapData);
+
+        if (!bootstrapData.employee) {
+          const lineId = bootstrapData.profile?.userId || "ไม่พบ";
+          throw new Error(`ยังไม่พบข้อมูลพนักงานสำหรับ LINE User ID: ${lineId}`);
+        }
+
+        document.getElementById("attendanceCard").classList.remove("hidden");
+        document.getElementById("timelineCard").classList.remove("hidden");
+        document.getElementById("summaryCard").classList.remove("hidden");
+
+        await loadToday();
+        setStatus("พร้อมลงเวลา", "success");
+      } catch (error) {
+        console.error(error);
+        setStatus(readableError(error), "error");
+        disableButtons(true);
+      }
+    }
+
+    async function callApi(action, payload = {}) {
+      const token = liff.getAccessToken();
+      if (!token) {
+        throw new Error("ไม่พบ LINE Access Token กรุณาปิดแล้วเปิด LIFF ใหม่");
+      }
+
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), CONFIG.REQUEST_TIMEOUT_MS);
+
+      try {
+        const response = await fetch(
+          `${CONFIG.API_URL}?action=${encodeURIComponent(action)}`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "x-line-access-token": token
+            },
+            body: JSON.stringify(payload),
+            signal: controller.signal
+          }
+        );
+
+        const text = await response.text();
+        let result;
+
+        try {
+          result = JSON.parse(text);
+        } catch {
+          throw new Error(`API ตอบกลับไม่ใช่ JSON: ${text.slice(0, 160)}`);
+        }
+
+        if (!response.ok || !result.ok) {
+          throw new Error(result.error || `HTTP ${response.status}`);
+        }
+
+        return result;
+      } catch (error) {
+        if (error.name === "AbortError") {
+          throw new Error("ระบบใช้เวลาตอบกลับนานเกิน 15 วินาที");
+        }
+        throw error;
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+
+    async function loadToday() {
+      try {
+        disableButtons(true);
+        setStatus("กำลังโหลดข้อมูลวันนี้…");
+
+        const workDate = getBangkokDate();
+        todayData = await callApi("today", { date: workDate });
+
+        renderToday(todayData);
+        setStatus("ข้อมูลเป็นปัจจุบัน", "success");
+      } catch (error) {
+        console.error(error);
+        setStatus(readableError(error), "error");
+      } finally {
+        updateAllowedButtons();
+      }
+    }
+
+    async function recordAttendance(eventType) {
+      if (saving) return;
+
+      saving = true;
+      disableButtons(true);
+      setButtonLoading(eventType, true);
+
+      try {
+        setStatus(`กำลังบันทึก${EVENT_LABELS[eventType] || eventType}…`);
+
+        const position = await getCurrentPosition();
+        const payload = {
+          eventType,
+          eventAt: new Date().toISOString(),
+          workDate: getBangkokDate(),
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+          gpsAccuracy: position.coords.accuracy,
+          gpsStatus: "OK",
+          officeId: todayData?.schedule?.office_id || null,
+          officeName: todayData?.schedule?.office?.name || null
+        };
+
+        const result = await callApi("record", payload);
+
+        setStatus(`บันทึก${EVENT_LABELS[eventType] || eventType}สำเร็จ`, "success");
+
+        await loadToday();
+
+        if (navigator.vibrate) navigator.vibrate(80);
+      } catch (error) {
+        console.error(error);
+        setStatus(readableError(error), "error");
+      } finally {
+        saving = false;
+        setButtonLoading(eventType, false);
+        updateAllowedButtons();
+      }
+    }
+
+    function getCurrentPosition() {
+      return new Promise((resolve, reject) => {
+        if (!navigator.geolocation) {
+          reject(new Error("อุปกรณ์นี้ไม่รองรับ GPS"));
+          return;
+        }
+
+        navigator.geolocation.getCurrentPosition(
+          resolve,
+          error => {
+            const message = {
+              1: "ไม่ได้รับอนุญาตให้ใช้ตำแหน่ง กรุณาเปิดสิทธิ์ Location ให้ LINE",
+              2: "ไม่สามารถระบุตำแหน่งได้",
+              3: "ค้นหาตำแหน่งนานเกินไป"
+            }[error.code] || "เกิดข้อผิดพลาดในการอ่าน GPS";
+
+            reject(new Error(message));
+          },
+          {
+            enableHighAccuracy: true,
+            timeout: 12000,
+            maximumAge: 0
+          }
+        );
+      });
+    }
+
+    function renderProfile(data) {
+      const profile = data.profile || {};
+      const employee = data.employee;
+
+      document.getElementById("profileCard").classList.remove("hidden");
+      document.getElementById("avatar").src =
+        profile.pictureUrl ||
+        "data:image/svg+xml;charset=UTF-8," +
+        encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="54" height="54"><rect width="100%" height="100%" rx="27" fill="#e2e8f0"/><text x="50%" y="57%" text-anchor="middle" font-size="23">👤</text></svg>');
+
+      document.getElementById("employeeName").textContent =
+        employee?.name || profile.displayName || "ไม่พบชื่อพนักงาน";
+
+      document.getElementById("employeeMeta").textContent =
+        employee
+          ? `${employee.employee_code} • ${employee.department || "ไม่ระบุแผนก"}`
+          : profile.userId || "ไม่พบ LINE User ID";
+
+      document.getElementById("adminBadge").classList.toggle("hidden", !data.isAdmin);
+    }
+
+    function renderToday(data) {
+      const schedule = data.schedule;
+      const events = Array.isArray(data.events) ? data.events : [];
+      const daily = data.daily;
+
+      document.getElementById("todayLabel").textContent =
+        formatThaiDate(getBangkokDate());
+
+      document.getElementById("scheduleBox").innerHTML = schedule
+        ? [
+            `<strong>${escapeHtml(schedule.schedule_status || "WORK")}</strong>`,
+            schedule.shift?.name ? `กะ: ${escapeHtml(schedule.shift.name)}` : "",
+            schedule.office?.name ? `สถานที่: ${escapeHtml(schedule.office.name)}` : "",
+            schedule.required_hours != null ? `ชั่วโมงที่กำหนด: ${formatHours(schedule.required_hours)}` : ""
+          ].filter(Boolean).join("<br>")
+        : "<strong>ไม่พบตารางงานวันนี้</strong><br>กรุณาติดต่อผู้ดูแลระบบ";
+
+      document.getElementById("eventCount").textContent = `${events.length} รายการ`;
+      document.getElementById("timeline").innerHTML = events.length
+        ? events.map(event => `
+            <div class="event">
+              <strong>${escapeHtml(EVENT_LABELS[event.event_type] || event.event_type)}</strong>
+              <span class="event-time">${formatBangkokTime(event.event_at)}</span>
+            </div>
+          `).join("")
+        : '<div class="status-box">ยังไม่มีการลงเวลาวันนี้</div>';
+
+      const metrics = [
+        ["สถานะ", daily?.work_status || "—"],
+        ["ชั่วโมงทำงาน", formatHours(daily?.paid_work_hours)],
+        ["ชั่วโมงขาด", formatHours(daily?.short_hours)],
+        ["ชั่วโมงเกิน", formatHours(daily?.over_hours)],
+        ["ชั่วโมงชดเชย", formatHours(daily?.makeup_hours)],
+        ["สุทธิ", formatHours(daily?.net_hours)]
+      ];
+
+      document.getElementById("summaryGrid").innerHTML = metrics.map(([label, value]) => `
+        <div class="metric">
+          <div class="metric-label">${escapeHtml(label)}</div>
+          <div class="metric-value">${escapeHtml(String(value))}</div>
+        </div>
+      `).join("");
+
+      updateAllowedButtons();
+    }
+
+    function updateAllowedButtons() {
+      if (saving || !bootstrapData?.employee) {
+        disableButtons(true);
+        return;
+      }
+
+      const events = Array.isArray(todayData?.events) ? todayData.events : [];
+      const types = events.map(e => e.event_type);
+      const scheduleStatus = todayData?.schedule?.schedule_status || "";
+
+      const noClockRequired = [
+        "WFH", "SICK_LEAVE", "BUSINESS_LEAVE",
+        "VACATION", "HOLIDAY", "UNPAID_LEAVE"
+      ].includes(scheduleStatus);
+
+      if (noClockRequired) {
+        disableButtons(true);
+        return;
+      }
+
+      document.getElementById("btnIn").disabled = types.includes("IN");
+      document.getElementById("btnBreakOut").disabled =
+        !types.includes("IN") ||
+        types.includes("BREAK_OUT") ||
+        types.includes("OUT");
+
+      document.getElementById("btnBreakIn").disabled =
+        !types.includes("BREAK_OUT") ||
+        types.includes("BREAK_IN") ||
+        types.includes("OUT");
+
+      document.getElementById("btnOut").disabled =
+        !types.includes("IN") ||
+        types.includes("OUT") ||
+        (types.includes("BREAK_OUT") && !types.includes("BREAK_IN"));
+    }
+
+    function disableButtons(disabled) {
+      ["btnIn", "btnBreakOut", "btnBreakIn", "btnOut"].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.disabled = disabled;
+      });
+    }
+
+    function setButtonLoading(eventType, isLoading) {
+      const map = {
+        IN: "btnIn",
+        BREAK_OUT: "btnBreakOut",
+        BREAK_IN: "btnBreakIn",
+        OUT: "btnOut"
+      };
+      const button = document.getElementById(map[eventType]);
+      if (!button) return;
+
+      if (isLoading) {
+        button.dataset.originalText = button.textContent;
+        button.innerHTML = '<span class="loading"></span>กำลังบันทึก';
+      } else {
+        button.textContent =
+          button.dataset.originalText ||
+          EVENT_LABELS[eventType] ||
+          eventType;
+      }
+    }
+
+    function setStatus(message, type = "") {
+      const box = document.getElementById("appStatus");
+      box.textContent = message;
+      box.className = `status-box${type ? " " + type : ""}`;
+    }
+
+    function getBangkokDate() {
+      const parts = new Intl.DateTimeFormat("en-CA", {
+        timeZone: "Asia/Bangkok",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit"
+      }).formatToParts(new Date());
+
+      const values = Object.fromEntries(parts.map(p => [p.type, p.value]));
+      return `${values.year}-${values.month}-${values.day}`;
+    }
+
+    function formatBangkokTime(value) {
+      if (!value) return "—";
+      return new Intl.DateTimeFormat("th-TH", {
+        timeZone: "Asia/Bangkok",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit"
+      }).format(new Date(value));
+    }
+
+    function formatThaiDate(isoDate) {
+      if (!isoDate) return "";
+      const [year, month, day] = isoDate.split("-").map(Number);
+      return new Intl.DateTimeFormat("th-TH", {
+        day: "numeric",
+        month: "short",
+        year: "numeric"
+      }).format(new Date(Date.UTC(year, month - 1, day)));
+    }
+
+    function formatHours(value) {
+      const hours = Number(value);
+      if (!Number.isFinite(hours)) return "—";
+
+      const totalMinutes = Math.round(Math.abs(hours) * 60);
+      const h = Math.floor(totalMinutes / 60);
+      const m = totalMinutes % 60;
+      const prefix = hours < 0 ? "-" : "";
+
+      if (h && m) return `${prefix}${h} ชม. ${m} นาที`;
+      if (h) return `${prefix}${h} ชม.`;
+      return `${prefix}${m} นาที`;
+    }
+
+    function readableError(error) {
+      const raw = String(error?.message || error || "เกิดข้อผิดพลาด");
+
+      const translations = {
+        MISSING_LINE_TOKEN: "ไม่พบ LINE Access Token",
+        INVALID_LINE_TOKEN: "LINE Access Token ไม่ถูกต้องหรือหมดอายุ",
+        EMPLOYEE_NOT_REGISTERED: "ยังไม่ได้ลงทะเบียนพนักงานในระบบ",
+        INVALID_EVENT_TYPE: "ประเภทการลงเวลาไม่ถูกต้อง",
+        ADMIN_REQUIRED: "บัญชีนี้ไม่มีสิทธิ์ผู้ดูแล",
+        REASON_REQUIRED: "กรุณากรอกเหตุผล",
+        UNKNOWN_ACTION: "API ไม่รองรับคำสั่งนี้"
+      };
+
+      return translations[raw] || raw;
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
+  </script>
+</body>
+</html>
