@@ -83,6 +83,9 @@
       <div class="section-head"><h2>ลงเวลาวันนี้</h2><small id="todayLabel"></small></div>
       <div id="scheduleBox" class="schedule">กำลังโหลด…</div>
       <button id="nextActionBtn" class="primary-action btn-in" onclick="recordNextAction()">กำลังตรวจสอบ…</button>
+      <button id="weekendWfhBtn" class="secondary hidden" style="background:#7c3aed;color:white;border:0" onclick="selfSetWeekendWfh()">
+        บันทึกวันนี้เป็น WFH
+      </button>
       <button class="secondary" onclick="loadToday()">รีเฟรชข้อมูล</button>
     </section>
 
@@ -117,6 +120,7 @@
 
       <div id="adminDailyTab">
         <div class="field"><label>วันที่</label><input id="adminDate" type="date" onchange="loadAdminDaily()"></div>
+        <div id="adminDailyKpis" class="grid2" style="margin-bottom:12px"></div>
         <div id="adminDailyResult" class="status">เลือกวันที่เพื่อโหลดข้อมูล</div>
       </div>
 
@@ -251,7 +255,7 @@ function renderProfile(){
 }
 
 async function loadToday(){
- const r=await api("today",{date:bkkDate()}); today=r; renderToday(); determineNextAction();
+ const r=await api("today",{date:bkkDate()}); today=r; renderToday(); determineNextAction(); updateWeekendWfhButton();
 }
 
 function renderToday(){
@@ -303,6 +307,35 @@ async function recordNextAction(){
  }catch(e){setStatus(errText(e),"err")}finally{saving=false;determineNextAction()}
 }
 
+
+async function selfSetWeekendWfh(){
+ if(!confirm("ยืนยันบันทึกวันนี้เป็น WFH 9 ชั่วโมง"))return;
+ try{
+  setStatus("กำลังบันทึก WFH…");
+  await api("self_weekend_wfh",{date:bkkDate()});
+  await loadToday();
+  await loadHistory();
+  setStatus("บันทึก WFH สำเร็จ","ok");
+ }catch(e){
+  setStatus(errText(e),"err");
+ }
+}
+
+function isBangkokWeekend(dateStr=bkkDate()){
+ const [y,m,d]=dateStr.split("-").map(Number);
+ const day=new Date(Date.UTC(y,m-1,d)).getUTCDay();
+ return day===0||day===6;
+}
+
+function updateWeekendWfhButton(){
+ const btn=document.getElementById("weekendWfhBtn");
+ if(!btn)return;
+ const isWeekend=isBangkokWeekend();
+ const alreadyWfh=today?.schedule?.schedule_status==="WFH";
+ const hasEvents=(today?.events||[]).length>0;
+ btn.classList.toggle("hidden",!isWeekend||alreadyWfh||hasEvents);
+}
+
 async function loadHistory(){
  const month=document.getElementById("historyMonth").value||bkkDate().slice(0,7),box=document.getElementById("historyList");
  try{
@@ -329,12 +362,27 @@ function showAdminTab(name,btn){
 
 async function loadAdminDaily(){
  const box=document.getElementById("adminDailyResult");
+ const kpi=document.getElementById("adminDailyKpis");
  try{
   const r=await api("admin_daily",{date:document.getElementById("adminDate").value});
-  const rows=r.rows||[]; box.className=""; box.innerHTML=rows.length?`<table class="table"><thead><tr><th>พนักงาน</th><th>สถานะ</th><th>เข้า</th><th>ออก</th><th>ทำงาน</th></tr></thead><tbody>${rows.map(x=>`<tr><td>${esc(x.employee.employee_code)}<br>${esc(x.employee.name)}</td><td>${esc(x.work_status||x.schedule_status)}</td><td>${timeTH(x.first_in_at)}</td><td>${timeTH(x.last_out_at)}</td><td>${hours(x.paid_work_hours)}</td></tr>`).join("")}</tbody></table>`:'<div class="status">ไม่พบข้อมูล</div>';
- }catch(e){box.className="status err";box.textContent=errText(e)}
-}
+  const rows=r.rows||[], summary=r.summary||{};
+  const cards=[
+    ["เข้างานแล้ว",summary.checked_in||0],
+    ["ออกงานแล้ว",summary.checked_out||0],
+    ["ยังไม่เข้างาน",summary.not_checked_in||0],
+    ["หยุด",summary.off||0],
+    ["ลา",summary.leave||0]
+  ];
+  kpi.innerHTML=cards.map(([a,b])=>`<div class="metric"><span class="muted">${a}</span><b>${b} คน</b></div>`).join("");
 
+  box.className="";
+  box.innerHTML=rows.length?`<table class="table"><thead><tr><th>พนักงาน</th><th>สถานะ</th><th>เข้า</th><th>ออก</th><th>ทำงาน</th></tr></thead><tbody>${rows.map(x=>`<tr><td>${esc(x.employee.employee_code)}<br>${esc(x.employee.name)}</td><td>${esc(x.work_status||x.schedule_status)}</td><td>${timeTH(x.first_in_at)}</td><td>${timeTH(x.last_out_at)}</td><td>${hours(x.paid_work_hours)}</td></tr>`).join("")}</tbody></table>`:'<div class="status">ไม่พบข้อมูล</div>';
+ }catch(e){
+  kpi.innerHTML="";
+  box.className="status err";
+  box.textContent=errText(e);
+ }
+}
 async function loadAdminEmployeeDay(){
  const r=await api("admin_employee_day",{employeeId:document.getElementById("attendanceEmployee").value,date:document.getElementById("attendanceDate").value});
  const box=document.getElementById("attendanceEditor"),rows=r.events||[];
