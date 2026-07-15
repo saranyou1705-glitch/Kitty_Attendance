@@ -123,6 +123,7 @@
         <button onclick="showAdminTab('attendance',this)">แก้เวลา</button>
         <button onclick="showAdminTab('schedule',this)">วันลา/หยุด</button>
         <button onclick="showAdminTab('monthly',this)">Monthly Summary</button>
+        <button onclick="showAdminTab('employees',this)">พนักงาน</button>
         <button onclick="showAdminTab('report',this)">LINE Report</button>
       </div>
 
@@ -178,6 +179,33 @@
         <div id="monthlySummaryResult" style="margin-top:12px"></div>
       </div>
 
+
+      <div id="adminEmployeesTab" class="hidden">
+        <h3>เพิ่มพนักงานใหม่</h3>
+        <div class="grid2">
+          <div class="field"><label>รหัสพนักงาน</label><input id="newEmployeeCode"></div>
+          <div class="field"><label>ชื่อ</label><input id="newEmployeeName"></div>
+        </div>
+        <div class="field"><label>LINE User ID</label><input id="newEmployeeLineId"></div>
+        <div class="grid2">
+          <div class="field"><label>ประเภทพนักงาน</label>
+            <select id="newEmployeeMode">
+              <option value="STANDARD">Standard</option>
+              <option value="MULTI_BRANCH">Multi-branch</option>
+              <option value="STOCK_REFILL">Stock refill</option>
+              <option value="DRIVER">คนขับรถ</option>
+            </select>
+          </div>
+          <div class="field"><label>Default Office</label><select id="newEmployeeOffice"></select></div>
+        </div>
+        <div class="grid2">
+          <div class="field"><label>ตำแหน่ง</label><input id="newEmployeePosition"></div>
+          <div class="field"><label>แผนก</label><input id="newEmployeeDepartment"></div>
+        </div>
+        <button class="secondary save" onclick="adminCreateEmployee()">เพิ่มพนักงาน</button>
+        <div id="employeeCreateResult" style="margin-top:10px"></div>
+      </div>
+
       <div id="adminReportTab" class="hidden">
         <div class="field"><label>วันที่รายงาน</label><input id="reportDate" type="date"></div>
         <div class="field">
@@ -208,6 +236,7 @@ const CONFIG = {
 const LABELS={IN:"เข้างาน",BREAK_OUT:"ออกพัก",BREAK_IN:"กลับจากพัก",OUT:"ออกงาน",
  DAY_IN:"เริ่มวัน",BRANCH_IN:"เข้าสาขา",BRANCH_OUT:"ออกจากสาขา",DAY_OUT:"จบวัน"};
 let boot=null,today=null,nextAction=null,saving=false,employees=[];
+let realtimeTimer=null;
 
 document.addEventListener("DOMContentLoaded",init);
 
@@ -229,7 +258,7 @@ async function init(){
   const d=bkkDate(); document.getElementById("historyMonth").value=d.slice(0,7);
   ["adminDate","attendanceDate","scheduleDate","reportDate"].forEach(id=>{const e=document.getElementById(id);if(e)e.value=d});
   document.getElementById("monthlySummaryMonth").value=d.slice(0,7);
-  await loadToday(); await loadHistory(); setStatus("พร้อมใช้งาน","ok");
+  await loadToday(); await loadHistory(); startRealtimeRefresh(); setStatus("พร้อมใช้งาน","ok");
  }catch(e){setStatus(errText(e),"err");console.error(e)}
 }
 
@@ -262,6 +291,30 @@ function renderProfile(){
  document.getElementById("employeeMeta").textContent=`${e.employee_code} • ${e.attendance_mode}`;
 }
 
+
+function startRealtimeRefresh(){
+ if(realtimeTimer)clearInterval(realtimeTimer);
+ realtimeTimer=setInterval(async()=>{
+  if(document.hidden||saving)return;
+  try{
+   if(!document.getElementById("employeeView").classList.contains("hidden")){
+    await loadToday();
+   }else{
+    const active=document.querySelector(".admin-tabs button.active")?.textContent||"";
+    if(active.includes("รายวัน"))await loadAdminDaily();
+    if(active.includes("แก้เวลา"))await loadAdminEmployeeDay();
+    if(active.includes("Monthly"))await loadMonthlySummary();
+   }
+  }catch(e){console.warn("Realtime refresh failed",e)}
+ },15000);
+}
+
+document.addEventListener("visibilitychange",()=>{
+ if(!document.hidden&&boot){
+  loadToday().catch(()=>{});
+ }
+});
+
 async function loadToday(){
  const r=await api("today",{date:bkkDate()}); today=r; renderToday(); determineNextAction(); updateWeekendWfhButton();
 }
@@ -293,6 +346,12 @@ function determineNextAction(){
 
  const noClock=["WFH","SICK_LEAVE","BUSINESS_LEAVE","VACATION","HOLIDAY","UNPAID_LEAVE"].includes(st);
  if(noClock){setNext(null,st);return}
+
+ if(mode==="DRIVER"){
+  if(!types.includes("IN")) return setNext("IN","เข้างาน");
+  if(!types.includes("OUT")) return setNext("OUT","ออกงาน");
+  return setNext(null,"ลงเวลาครบแล้ว");
+ }
 
  if(mode==="MULTI_BRANCH"){
   const last=events.length?events[events.length-1].event_type:null;
@@ -413,13 +472,15 @@ async function loadHistory(){
 
 async function loadAdminBootstrap(){
  const r=await api("admin_bootstrap"); employees=r.employees||[];
+ const officeOpts=(r.offices||[]).map(o=>`<option value="${o.id}">${esc(o.office_code)} - ${esc(o.name)}</option>`).join("");
+ document.getElementById("newEmployeeOffice").innerHTML='<option value="">ไม่ระบุ</option>'+officeOpts;
  const opts=employees.map(e=>`<option value="${e.id}">${esc(e.employee_code)} - ${esc(e.name)}</option>`).join("");
  document.getElementById("attendanceEmployee").innerHTML=opts;
  document.getElementById("scheduleEmployee").innerHTML=opts;
 }
 
 function showAdminTab(name,btn){
- ["daily","attendance","schedule","monthly","report"].forEach(x=>document.getElementById("admin"+cap(x)+"Tab").classList.toggle("hidden",x!==name));
+ ["daily","attendance","schedule","monthly","employees","report"].forEach(x=>document.getElementById("admin"+cap(x)+"Tab").classList.toggle("hidden",x!==name));
  document.querySelectorAll(".admin-tabs button").forEach(x=>x.classList.remove("active"));btn.classList.add("active");
 }
 
@@ -464,24 +525,24 @@ async function adminEditEvent(id,current){
  const reason=prompt("เหตุผลในการแก้ไข"); if(!reason)return;
  const eventAt=bangkokLocalToIso(v);
  await api("admin_update_event",{eventId:id,eventAt,reason});
- await loadAdminEmployeeDay(); await loadAdminDaily();
+ await Promise.all([loadAdminEmployeeDay(),loadAdminDaily(),loadMonthlySummary()]);
 }
 
 async function adminDeleteEvent(id){
  const reason=prompt("เหตุผลในการลบ"); if(!reason)return;
- await api("admin_delete_event",{eventId:id,reason}); await loadAdminEmployeeDay(); await loadAdminDaily();
+ await api("admin_delete_event",{eventId:id,reason}); await Promise.all([loadAdminEmployeeDay(),loadAdminDaily(),loadMonthlySummary()]);
 }
 
 async function adminAddEvent(){
  const reason=document.getElementById("newEventReason").value.trim(); if(!reason)return alert("กรุณากรอกเหตุผล");
  await api("admin_add_event",{employeeId:document.getElementById("attendanceEmployee").value,eventType:document.getElementById("newEventType").value,eventAt:bangkokLocalToIso(document.getElementById("newEventAt").value),reason});
- await loadAdminEmployeeDay();await loadAdminDaily();alert("เพิ่มและคำนวณใหม่แล้ว");
+ await Promise.all([loadAdminEmployeeDay(),loadAdminDaily(),loadMonthlySummary()]);alert("เพิ่มและคำนวณใหม่แล้ว");
 }
 
 async function adminSaveSchedule(){
  const reason=document.getElementById("scheduleReason").value.trim();if(!reason)return alert("กรุณากรอกเหตุผล");
  await api("admin_update_schedule",{employeeId:document.getElementById("scheduleEmployee").value,workDate:document.getElementById("scheduleDate").value,scheduleStatus:document.getElementById("scheduleStatus").value,reason});
- await loadAdminDaily();alert("บันทึกและคำนวณใหม่แล้ว");
+ await Promise.all([loadAdminDaily(),loadMonthlySummary()]);alert("บันทึกและคำนวณใหม่แล้ว");
 }
 
 
@@ -507,6 +568,27 @@ async function loadMonthlySummary(){
     <td>${hours(x.net_hours)}</td>
    </tr>`).join("")}</tbody></table>`:'<div class="status">ไม่พบข้อมูล</div>';
  }catch(e){box.innerHTML=`<div class="status err">${esc(errText(e))}</div>`}
+}
+
+
+async function adminCreateEmployee(){
+ const result=document.getElementById("employeeCreateResult");
+ try{
+  const payload={
+   employeeCode:document.getElementById("newEmployeeCode").value.trim(),
+   name:document.getElementById("newEmployeeName").value.trim(),
+   lineUserId:document.getElementById("newEmployeeLineId").value.trim(),
+   attendanceMode:document.getElementById("newEmployeeMode").value,
+   assignedOfficeId:document.getElementById("newEmployeeOffice").value||null,
+   position:document.getElementById("newEmployeePosition").value.trim(),
+   department:document.getElementById("newEmployeeDepartment").value.trim()
+  };
+  const r=await api("admin_create_employee",payload);
+  result.innerHTML=`<div class="status ok">เพิ่ม ${esc(r.employee.employee_code)} - ${esc(r.employee.name)} สำเร็จ</div>`;
+  await loadAdminBootstrap();
+ }catch(e){
+  result.innerHTML=`<div class="status err">${esc(errText(e))}</div>`;
+ }
 }
 
 async function previewLineReport() {
