@@ -517,6 +517,8 @@ function determineNextAction(){
 
  if(mode==="DRIVER"){
   if(!types.includes("IN")) return setNext("IN","เข้างาน");
+  if(!types.includes("BREAK_OUT")) return setNext("BREAK_OUT","ออกพัก");
+  if(!types.includes("BREAK_IN")) return setNext("BREAK_IN","เข้าพัก");
   if(!types.includes("OUT")) return setNext("OUT","ออกงาน");
   return setNext(null,"ลงเวลาครบแล้ว");
  }
