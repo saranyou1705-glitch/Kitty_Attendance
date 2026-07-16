@@ -632,7 +632,7 @@ async function loadHistory(){
  const month=document.getElementById("historyMonth").value||bkkDate().slice(0,7),box=document.getElementById("historyList");
  try{
   const r=await api("employee_month",{month});
-  const rows=(r.rows||[]).filter(x => x.first_in_at || x.last_out_at || Number(x.paid_work_hours||0) > 0);
+  const rows=r.rows||[];
   box.innerHTML=rows.length?rows.map(x=>`<div class="event" style="display:block">
    <div style="display:flex;justify-content:space-between"><b>${thaiDate(x.work_date)}</b><span class="muted">${esc(x.work_status||x.schedule_status||"—")}</span></div>
    <div class="muted" style="margin-top:6px">เข้า ${timeTH(x.first_in_at)} • ออก ${timeTH(x.last_out_at)}<br>ทำงาน ${hours(x.paid_work_hours)} • ขาด ${hours(x.short_hours)} • เกิน ${hours(x.over_hours)}</div>
@@ -683,18 +683,29 @@ async function loadAdminEmployeeDay(){
  box.innerHTML=rows.length?rows.map(x=>`<div class="event" style="display:block">
   <div><b>${esc(x.event_type)}</b> ${timeTH(x.event_at)}</div>
   <div class="row-actions" style="margin-top:8px">
-   <button onclick="adminEditEvent('${x.id}','${x.event_at}')">แก้เวลา</button>
+   <button onclick="adminEditEvent('${x.id}','${x.event_at}','${x.event_type}')">แก้รายการ</button>
    <button class="danger" onclick="adminDeleteEvent('${x.id}')">ลบ</button>
   </div></div>`).join(""):'<div class="status">ไม่พบรายการ</div>';
 }
 
-async function adminEditEvent(id,current){
+async function adminEditEvent(id,current,currentType){
+ const allowed=["IN","BREAK_OUT","BREAK_IN","OUT","DAY_IN","BRANCH_IN","BRANCH_OUT","DAY_OUT","WORK_IN","WORK_OUT","REFILL_IN","REFILL_OUT"];
+ const eventType=(prompt("ประเภทการลงเวลา",currentType)||"").trim().toUpperCase();
+ if(!eventType)return;
+ if(!allowed.includes(eventType)){
+  alert("ประเภทการลงเวลาไม่ถูกต้อง");
+  return;
+ }
+
  const defaultValue=toBangkokLocalInput(current);
  const v=prompt("กรอกวันเวลาไทย รูปแบบ YYYY-MM-DDTHH:mm",defaultValue);
  if(!v)return;
- const reason=prompt("เหตุผลในการแก้ไข"); if(!reason)return;
+
+ const reason=prompt("เหตุผลในการแก้ไข");
+ if(!reason)return;
+
  const eventAt=bangkokLocalToIso(v);
- await api("admin_update_event",{eventId:id,eventAt,reason});
+ await api("admin_update_event",{eventId:id,eventAt,eventType,reason});
  await Promise.all([loadAdminEmployeeDay(),loadAdminDaily(),loadMonthlySummary()]);
 }
 
