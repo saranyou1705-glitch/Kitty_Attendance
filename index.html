@@ -154,6 +154,23 @@
       <div class="section-head"><h2>ลงเวลาวันนี้</h2><small id="todayLabel"></small></div>
       <div id="scheduleBox" class="schedule">กำลังโหลด…</div>
       <button id="nextActionBtn" class="primary-action btn-in" onclick="recordNextAction()">กำลังตรวจสอบ…</button>
+
+      <div id="driverActions" class="grid2 hidden" style="margin-top:10px">
+        <button id="driverWorkBtn"
+          class="primary-action btn-in"
+          style="margin-top:0"
+          onclick="recordDriverWorkAction()">
+          เข้างาน
+        </button>
+
+        <button id="driverBreakBtn"
+          class="primary-action btn-breakout"
+          style="margin-top:0"
+          onclick="recordDriverBreakAction()">
+          ออกพัก
+        </button>
+      </div>
+
       <div id="baOptionalActions" class="grid2 hidden" style="margin-top:10px">
         <button id="baBreakBtn" class="secondary" style="margin-top:0;background:#ea580c;color:white;border:0" onclick="recordSpecificAction('BREAK_OUT')">
           เข้าพัก
@@ -504,23 +521,71 @@ function determineNextAction(){
  const events=today.events||[];
  const types=events.map(x=>x.event_type);
  const st=today.schedule?.schedule_status;
+
+ const mainBtn=document.getElementById("nextActionBtn");
+ const driverActions=document.getElementById("driverActions");
+ const driverWorkBtn=document.getElementById("driverWorkBtn");
+ const driverBreakBtn=document.getElementById("driverBreakBtn");
+
  const optional=document.getElementById("baOptionalActions");
  const breakBtn=document.getElementById("baBreakBtn");
  const endBtn=document.getElementById("baEndDayBtn");
+
+ mainBtn.classList.remove("hidden");
+ driverActions.classList.add("hidden");
 
  optional.classList.add("hidden");
  breakBtn.classList.add("hidden");
  endBtn.classList.add("hidden");
 
  const noClock=["WFH","SICK_LEAVE","BUSINESS_LEAVE","VACATION","HOLIDAY","UNPAID_LEAVE"].includes(st);
- if(noClock){setNext(null,st);return}
+ if(noClock){
+  setNext(null,st);
+  return;
+ }
 
  if(mode==="DRIVER"){
-  if(!types.includes("IN")) return setNext("IN","เข้างาน");
-  if(!types.includes("BREAK_OUT")) return setNext("BREAK_OUT","ออกพัก");
-  if(!types.includes("BREAK_IN")) return setNext("BREAK_IN","เข้าพัก");
-  if(!types.includes("OUT")) return setNext("OUT","ออกงาน");
-  return setNext(null,"ลงเวลาครบแล้ว");
+  nextAction=null;
+  mainBtn.classList.add("hidden");
+  driverActions.classList.remove("hidden");
+
+  const hasIn=types.includes("IN");
+  const hasOut=types.includes("OUT");
+  const hasBreakOut=types.includes("BREAK_OUT");
+  const hasBreakIn=types.includes("BREAK_IN");
+
+  const workAction=!hasIn ? "IN" : (!hasOut ? "OUT" : null);
+  driverWorkBtn.dataset.action=workAction||"";
+  driverWorkBtn.disabled=!workAction;
+  driverWorkBtn.textContent=
+    workAction==="IN" ? "เข้างาน" :
+    workAction==="OUT" ? "ออกงาน" :
+    "ลงเวลางานครบแล้ว";
+  driverWorkBtn.className=
+    "primary-action "+(workAction==="OUT" ? "btn-out" : "btn-in");
+
+  let breakAction=null;
+  let breakLabel="พักครบแล้ว";
+
+  if(!hasIn){
+    breakLabel="กดเข้างานก่อน";
+  }else if(hasOut){
+    breakLabel="ปิดวันทำงานแล้ว";
+  }else if(!hasBreakOut){
+    breakAction="BREAK_OUT";
+    breakLabel="ออกพัก";
+  }else if(!hasBreakIn){
+    breakAction="BREAK_IN";
+    breakLabel="เข้าพัก";
+  }
+
+  driverBreakBtn.dataset.action=breakAction||"";
+  driverBreakBtn.disabled=!breakAction;
+  driverBreakBtn.textContent=breakLabel;
+  driverBreakBtn.className=
+    "primary-action "+(breakAction==="BREAK_IN" ? "btn-breakin" : "btn-breakout");
+
+  return;
  }
 
  if(mode==="MULTI_BRANCH"){
@@ -566,6 +631,18 @@ function setNext(type,label){
  b.className="primary-action "+({IN:"btn-in",BREAK_OUT:"btn-breakout",BREAK_IN:"btn-breakin",OUT:"btn-out",DAY_IN:"btn-day",DAY_OUT:"btn-day",BRANCH_IN:"btn-branch",BRANCH_OUT:"btn-branch"}[type]||"btn-in");
 }
 
+async function recordDriverWorkAction(){
+ const btn=document.getElementById("driverWorkBtn");
+ const action=btn?.dataset.action;
+ if(action) await recordSpecificAction(action);
+}
+
+async function recordDriverBreakAction(){
+ const btn=document.getElementById("driverBreakBtn");
+ const action=btn?.dataset.action;
+ if(action) await recordSpecificAction(action);
+}
+
 async function recordNextAction(){
  if(!nextAction)return;
  await recordSpecificAction(nextAction);
@@ -575,6 +652,10 @@ async function recordSpecificAction(eventType){
  if(!eventType||saving)return;
  saving=true;
  document.getElementById("nextActionBtn").disabled=true;
+ const driverWorkBtn=document.getElementById("driverWorkBtn");
+ const driverBreakBtn=document.getElementById("driverBreakBtn");
+ if(driverWorkBtn)driverWorkBtn.disabled=true;
+ if(driverBreakBtn)driverBreakBtn.disabled=true;
  try{
   setStatus(`กำลังบันทึก ${LABELS[eventType]||eventType}…`);
   const pos=await geo();
