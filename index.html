@@ -895,6 +895,8 @@ function statusThai(status){
   UNPAID_LEAVE:"ลาไม่รับค่าจ้าง",
   HOLIDAY:"วันหยุด",
   WORK:"ทำงาน",
+  NO_SCHEDULE:"ไม่มีตาราง",
+  FUTURE:"อนาคต",
   IN_PROGRESS:"กำลังทำงาน"
  };
  return map[status]||status||"-";
@@ -1017,15 +1019,16 @@ function drawEmployeeDailyA4(employeeReport,month){
  const tableX=34, tableY=245;
  const tableW=w-68;
  const col=[
-  ["วันที่",0,60],
-  ["สถานะ",60,92],
-  ["เข้า",152,70],
-  ["ออกพัก",222,76],
-  ["เข้าพัก",298,76],
-  ["ออก",374,70],
-  ["ทำงาน",444,94],
-  ["ขาด",538,82],
-  ["เกิน",620,82]
+  ["วันที่",0,50],
+  ["สถานะ",50,82],
+  ["เข้า",132,62],
+  ["ออกพัก",194,70],
+  ["เข้าพัก",264,70],
+  ["ออก",334,62],
+  ["ทำงาน",396,82],
+  ["ขาด",478,74],
+  ["เกิน",552,74],
+  ["สุทธิ",626,74]
  ];
 
  ctx.fillStyle="#0f172a";
@@ -1052,7 +1055,8 @@ function drawEmployeeDailyA4(employeeReport,month){
    eventTimeShort(r.last_out_at),
    hours(r.paid_work_hours||0),
    hours(r.short_hours||0),
-   hours(r.over_hours||0)
+   hours(r.over_hours||0),
+   hours(r.net_hours||0)
   ];
   values.forEach((v,i)=>{
    drawText(ctx,v,tableX+col[i][1]+5,y+2,{size:9.5,color:"#111827"});
