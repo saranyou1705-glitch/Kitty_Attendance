@@ -272,11 +272,21 @@
           <select id="a4ReportEmployee"><option value="">ทุกคน</option></select>
         </div>
         <div class="grid2">
-          <button class="secondary save" onclick="downloadMonthlyDailyA4Images()">ดาวน์โหลดรายวันทั้งเดือน</button>
+          <button class="secondary" onclick="previewMonthlyDailyA4Image()">ดูตัวอย่างรายวัน</button>
+          <button class="secondary save" onclick="downloadMonthlyDailyA4Images()">ดาวน์โหลดรายวัน</button>
+          <button class="secondary" onclick="previewOrgMonthlyA4Image()">ดูตัวอย่างรายเดือนองค์กร</button>
           <button class="secondary save" onclick="downloadOrgMonthlyA4Image()">ดาวน์โหลดรายเดือนองค์กร</button>
         </div>
         <div class="status" style="margin-top:10px">
-          รายงานพนักงาน 1 คนจะถูกจัดให้พอดี 1 หน้า A4 ต่อ 1 รูปภาพ ถ้าเลือกทุกคน ระบบจะดาวน์โหลดแยกเป็น 1 รูปต่อพนักงาน
+          ใน LINE WebView อาจบล็อกการดาวน์โหลดไฟล์อัตโนมัติ ให้กดดูตัวอย่างแล้วกดค้างที่รูปเพื่อบันทึก หรือเปิดใน Safari เพื่อดาวน์โหลดเป็นไฟล์ได้เสถียรกว่า
+        </div>
+        <div id="a4PreviewBox" class="hidden" style="margin-top:14px">
+          <div class="section-head">
+            <h3>Preview</h3>
+            <button class="secondary" onclick="clearA4Preview()" style="width:auto;margin:0;padding:8px 14px">ปิด Preview</button>
+          </div>
+          <div id="a4PreviewActions" class="grid2" style="margin-bottom:10px"></div>
+          <div id="a4PreviewImageWrap" style="background:#f1f5f9;border:1px solid var(--line);border-radius:18px;padding:10px;overflow:auto"></div>
         </div>
         <div id="monthlySummaryResult" style="margin-top:12px"></div>
       </div>
@@ -838,41 +848,145 @@ function drawText(ctx,text,x,y,opt={}){
 function roundRect(ctx,x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();}
 function drawLine(ctx,x1,y1,x2,y2,color="#e5e7eb"){ctx.strokeStyle=color;ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();}
 function safeFileName(s){return String(s||"report").replace(/[\\/:*?"<>|]/g,"-").replace(/\s+/g,"_").slice(0,120)}
-function downloadCanvasPng(canvas,filename){const a=document.createElement("a");a.href=canvas.toDataURL("image/png");a.download=filename;document.body.appendChild(a);a.click();a.remove();}
-function statusThai(status){const map={COMPLETE:"ครบ",OVER:"เกิน",SHORT:"ขาด",NO_CHECKOUT:"ยังไม่ออก",ABSENT:"ไม่มา",OFF:"หยุด",WFH:"WFH",SICK_LEAVE:"ลาป่วย",BUSINESS_LEAVE:"ลากิจ",VACATION:"ลาพักร้อน",UNPAID_LEAVE:"ลาไม่รับค่าจ้าง",HOLIDAY:"วันหยุด",WORK:"ทำงาน"};return map[status]||status||"-";}
-function eventTimeShort(v){return timeTH(v)==="—"?"-":timeTH(v)}
-function drawEmployeeDailyA4(rep,month){
- const {canvas,ctx,w,h}=a4Canvas("portrait",2), emp=rep.employee, rows=rep.rows||[];
- drawText(ctx,"Kitty Attendance",40,34,{size:18,weight:"700",color:"#0f172a"});
- drawText(ctx,"รายงานรายวันทั้งเดือน",40,62,{size:30,weight:"800"});
- drawText(ctx,`${emp.employee_code} - ${emp.name}`,40,104,{size:22,weight:"700"});
- drawText(ctx,`เดือน ${month}`,40,134,{size:16,color:"#64748b"});
- const s=rep.summary||{}, cardY=166, gap=10, cardW=(w-80-gap*3)/4;
- [["วันทำงาน",s.work_days||0],["ชั่วโมงทำงาน",hours(s.paid_work_hours||0)],["ขาด",hours(s.short_hours||0)],["เกิน",hours(s.over_hours||0)]].forEach((c,i)=>{const x=40+i*(cardW+gap);ctx.fillStyle="#f8fafc";roundRect(ctx,x,cardY,cardW,54,12);ctx.fill();ctx.strokeStyle="#e2e8f0";ctx.stroke();drawText(ctx,c[0],x+12,cardY+8,{size:12,color:"#64748b"});drawText(ctx,c[1],x+12,cardY+27,{size:16,weight:"700"});});
- const tableX=40, tableY=245, col=[["วันที่",0,72],["สถานะ",72,90],["เข้า",162,72],["ออกพัก",234,72],["เข้าพัก",306,72],["ออก",378,72],["ทำงาน",450,86],["ขาด",536,72],["เกิน",608,72]];
- ctx.fillStyle="#0f172a";roundRect(ctx,tableX,tableY,w-80,30,8);ctx.fill();col.forEach(([l,x])=>drawText(ctx,l,tableX+x+6,tableY+7,{size:11,weight:"700",color:"#fff"}));
- let y=tableY+34, rowH=24;
- rows.slice(0,31).forEach((r,idx)=>{if(idx%2===0){ctx.fillStyle="#f8fafc";ctx.fillRect(tableX,y-2,w-80,rowH)} const values=[String(r.work_date||"").slice(8,10),statusThai(r.work_status||r.schedule_status),eventTimeShort(r.first_in_at),eventTimeShort(r.break_out_at),eventTimeShort(r.break_in_at),eventTimeShort(r.last_out_at),hours(r.paid_work_hours||0),hours(r.short_hours||0),hours(r.over_hours||0)];values.forEach((v,i)=>drawText(ctx,v,tableX+col[i][1]+6,y+2,{size:10,color:"#111827"}));y+=rowH;});
- drawLine(ctx,40,h-60,w-40,h-60);drawText(ctx,`สร้างเมื่อ ${new Date().toLocaleString("th-TH",{timeZone:"Asia/Bangkok"})}`,40,h-45,{size:11,color:"#64748b"});return canvas;
+function isLineWebView(){
+ const ua=navigator.userAgent||"";
+ return /Line\//i.test(ua)||/LIFF/i.test(ua);
 }
-function drawOrgMonthlyA4(report,month){
- const {canvas,ctx,w,h}=a4Canvas("landscape",2), rows=report.rows||[];
- drawText(ctx,"Kitty Attendance",40,30,{size:18,weight:"700",color:"#0f172a"});drawText(ctx,"รายงานรายเดือนทั้งองค์กร",40,58,{size:30,weight:"800"});drawText(ctx,`เดือน ${month}`,40,100,{size:16,color:"#64748b"});
- const s=report.summary||{}, cards=[["พนักงาน",s.employee_count||rows.length],["วันทำงานรวม",s.work_days||0],["ชั่วโมงทำงานรวม",hours(s.paid_work_hours||0)],["ขาดรวม",hours(s.short_hours||0)],["เกินรวม",hours(s.over_hours||0)]], cardY=132,gap=10,cardW=(w-80-gap*4)/5;
- cards.forEach((c,i)=>{const x=40+i*(cardW+gap);ctx.fillStyle="#f8fafc";roundRect(ctx,x,cardY,cardW,54,12);ctx.fill();ctx.strokeStyle="#e2e8f0";ctx.stroke();drawText(ctx,c[0],x+12,cardY+8,{size:12,color:"#64748b"});drawText(ctx,c[1],x+12,cardY+27,{size:16,weight:"700"});});
- const tableX=40, tableY=214, col=[["รหัส",0,70],["ชื่อ",70,160],["ประเภท",230,105],["วัน",335,55],["ชั่วโมง",390,120],["ขาด",510,110],["เกิน",620,110],["สุทธิ",730,110]];
- ctx.fillStyle="#0f172a";roundRect(ctx,tableX,tableY,w-80,30,8);ctx.fill();col.forEach(([l,x])=>drawText(ctx,l,tableX+x+6,tableY+7,{size:12,weight:"700",color:"#fff"}));
- let y=tableY+35; const rowH=Math.max(16,Math.min(24,Math.floor((h-y-55)/Math.max(rows.length,1)))), fs=rowH<=17?9:11;
- rows.forEach((r,idx)=>{if(y+rowH>h-60)return;if(idx%2===0){ctx.fillStyle="#f8fafc";ctx.fillRect(tableX,y-2,w-80,rowH)} const values=[r.employee_code,r.name,r.attendance_mode||"",r.work_days||0,hours(r.paid_work_hours||0),hours(r.short_hours||0),hours(r.over_hours||0),hours(r.net_hours||0)];values.forEach((v,i)=>drawText(ctx,v,tableX+col[i][1]+6,y+2,{size:fs,color:"#111827"}));y+=rowH;});
- drawLine(ctx,40,h-45,w-40,h-45);drawText(ctx,`สร้างเมื่อ ${new Date().toLocaleString("th-TH",{timeZone:"Asia/Bangkok"})}`,40,h-32,{size:10,color:"#64748b"});return canvas;
+
+function canvasToDataUrl(canvas){
+ return canvas.toDataURL("image/png");
 }
+
+function showA4Preview(canvas,filename,message=""){
+ const box=document.getElementById("a4PreviewBox");
+ const actions=document.getElementById("a4PreviewActions");
+ const wrap=document.getElementById("a4PreviewImageWrap");
+ const dataUrl=canvasToDataUrl(canvas);
+
+ box.classList.remove("hidden");
+ wrap.innerHTML=`<img id="a4PreviewImage" src="${dataUrl}" alt="A4 report preview" style="width:100%;height:auto;border-radius:12px;background:white">`;
+
+ const lineNote=isLineWebView()
+  ? `<div class="status" style="grid-column:1/-1">ตอนนี้กำลังเปิดผ่าน LINE: กดค้างที่รูปเพื่อบันทึกภาพ หรือกดเปิดรูปแล้วใช้เมนูแชร์/บันทึก ถ้าต้องการดาวน์โหลดเป็นไฟล์ให้เปิดลิงก์นี้ผ่าน Safari</div>`
+  : "";
+
+ actions.innerHTML=`
+  ${lineNote}
+  ${message?`<div class="status" style="grid-column:1/-1">${esc(message)}</div>`:""}
+  <button class="secondary save" onclick="downloadDataUrl('${dataUrl}','${esc(filename)}')">บันทึก/ดาวน์โหลด PNG</button>
+  <button class="secondary" onclick="openPreviewImage()">เปิดรูปเต็มจอ</button>
+ `;
+ box.scrollIntoView({behavior:"smooth",block:"start"});
+}
+
+function clearA4Preview(){
+ document.getElementById("a4PreviewBox").classList.add("hidden");
+ document.getElementById("a4PreviewActions").innerHTML="";
+ document.getElementById("a4PreviewImageWrap").innerHTML="";
+}
+
+function openPreviewImage(){
+ const img=document.getElementById("a4PreviewImage");
+ if(!img)return;
+ const url=img.src;
+ if(window.liff&&liff.openWindow){
+  try{liff.openWindow({url,external:true});return;}catch(e){}
+ }
+ window.open(url,"_blank");
+}
+
+function downloadDataUrl(dataUrl,filename){
+ try{
+  const a=document.createElement("a");
+  a.href=dataUrl;
+  a.download=filename;
+  a.rel="noopener";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+ }catch(e){
+  const img=document.getElementById("a4PreviewImage");
+  if(img)img.scrollIntoView({behavior:"smooth"});
+ }
+}
+
+function downloadCanvasPng(canvas,filename){
+ const dataUrl=canvasToDataUrl(canvas);
+
+ // LINE in-app browser often blocks programmatic downloads.
+ // Show a preview first so the user can long-press/save the image.
+ if(isLineWebView()){
+  showA4Preview(canvas,filename,"LINE อาจไม่ยอมดาวน์โหลดอัตโนมัติ จึงแสดง Preview ให้บันทึกรูปได้");
+  return false;
+ }
+
+ downloadDataUrl(dataUrl,filename);
+ return true;
+}
+
+async function previewMonthlyDailyA4Image(){
+ const month=document.getElementById("monthlySummaryMonth").value;
+ const employeeId=document.getElementById("a4ReportEmployee").value||null;
+ const result=document.getElementById("monthlySummaryResult");
+ try{
+  result.innerHTML='<div class="status">กำลังสร้าง Preview รายวัน…</div>';
+  const r=await api("admin_a4_employee_daily_report",{month,employeeId});
+  const reports=r.reports||[];
+  if(!reports.length){result.innerHTML='<div class="status">ไม่พบข้อมูลสำหรับสร้าง Preview</div>';return;}
+  const rep=reports[0];
+  const filename=safeFileName(`daily_${month}_${rep.employee.employee_code}_${rep.employee.name}.png`);
+  showA4Preview(drawEmployeeDailyA4(rep,month),filename,employeeId?`Preview: ${esc(rep.employee.employee_code)} - ${esc(rep.employee.name)}`:`Preview คนแรกจากทั้งหมด ${reports.length} คน หากต้องการดูคนอื่นให้เลือกชื่อพนักงานก่อน`);
+  result.innerHTML='<div class="status ok">สร้าง Preview แล้ว</div>';
+ }catch(e){result.innerHTML=`<div class="status err">${esc(errText(e))}</div>`;}
+}
+
+async function previewOrgMonthlyA4Image(){
+ const month=document.getElementById("monthlySummaryMonth").value;
+ const result=document.getElementById("monthlySummaryResult");
+ try{
+  result.innerHTML='<div class="status">กำลังสร้าง Preview รายเดือนองค์กร…</div>';
+  const r=await api("admin_a4_org_monthly_report",{month});
+  const filename=safeFileName(`organization_monthly_${month}.png`);
+  showA4Preview(drawOrgMonthlyA4(r,month),filename,"Preview รายเดือนองค์กร");
+  result.innerHTML='<div class="status ok">สร้าง Preview แล้ว</div>';
+ }catch(e){result.innerHTML=`<div class="status err">${esc(errText(e))}</div>`;}
+}
+
 async function downloadMonthlyDailyA4Images(){
  const month=document.getElementById("monthlySummaryMonth").value, employeeId=document.getElementById("a4ReportEmployee").value||null, result=document.getElementById("monthlySummaryResult");
- try{result.innerHTML='<div class="status">กำลังสร้างรูปภาพรายงานรายวัน…</div>'; const r=await api("admin_a4_employee_daily_report",{month,employeeId}); const reports=r.reports||[]; if(!reports.length){result.innerHTML='<div class="status">ไม่พบข้อมูลสำหรับสร้างรายงาน</div>';return;} for(const rep of reports){downloadCanvasPng(drawEmployeeDailyA4(rep,month),safeFileName(`daily_${month}_${rep.employee.employee_code}_${rep.employee.name}.png`)); await new Promise(res=>setTimeout(res,250));} result.innerHTML=`<div class="status ok">ดาวน์โหลดรายงานรายวัน ${reports.length} ไฟล์แล้ว</div>`;}catch(e){result.innerHTML=`<div class="status err">${esc(errText(e))}</div>`;}
+ try{
+  result.innerHTML='<div class="status">กำลังสร้างรูปภาพรายงานรายวัน…</div>';
+  const r=await api("admin_a4_employee_daily_report",{month,employeeId});
+  const reports=r.reports||[];
+  if(!reports.length){result.innerHTML='<div class="status">ไม่พบข้อมูลสำหรับสร้างรายงาน</div>';return;}
+
+  let downloaded=0;
+  for(const rep of reports){
+   const filename=safeFileName(`daily_${month}_${rep.employee.employee_code}_${rep.employee.name}.png`);
+   const ok=downloadCanvasPng(drawEmployeeDailyA4(rep,month),filename);
+   if(ok)downloaded++;
+   // In LINE, show only one preview at a time instead of firing many blocked downloads.
+   if(isLineWebView())break;
+   await new Promise(res=>setTimeout(res,250));
+  }
+
+  if(isLineWebView()){
+   result.innerHTML=`<div class="status ok">LINE เปิด Preview ให้แล้ว หากเลือกทุกคน ระบบจะแสดงไฟล์แรกก่อน แนะนำเปิดผ่าน Safari เพื่อดาวน์โหลดหลายไฟล์</div>`;
+  }else{
+   result.innerHTML=`<div class="status ok">ดาวน์โหลดรายงานรายวัน ${downloaded} ไฟล์แล้ว</div>`;
+  }
+ }catch(e){result.innerHTML=`<div class="status err">${esc(errText(e))}</div>`;}
 }
+
 async function downloadOrgMonthlyA4Image(){
  const month=document.getElementById("monthlySummaryMonth").value, result=document.getElementById("monthlySummaryResult");
- try{result.innerHTML='<div class="status">กำลังสร้างรูปภาพรายงานรายเดือนองค์กร…</div>'; const r=await api("admin_a4_org_monthly_report",{month}); downloadCanvasPng(drawOrgMonthlyA4(r,month),safeFileName(`organization_monthly_${month}.png`)); result.innerHTML='<div class="status ok">ดาวน์โหลดรายงานรายเดือนองค์กรแล้ว</div>'; }catch(e){result.innerHTML=`<div class="status err">${esc(errText(e))}</div>`;}
+ try{
+  result.innerHTML='<div class="status">กำลังสร้างรูปภาพรายงานรายเดือนองค์กร…</div>';
+  const r=await api("admin_a4_org_monthly_report",{month});
+  const filename=safeFileName(`organization_monthly_${month}.png`);
+  const ok=downloadCanvasPng(drawOrgMonthlyA4(r,month),filename);
+  result.innerHTML=ok?'<div class="status ok">ดาวน์โหลดรายงานรายเดือนองค์กรแล้ว</div>':'<div class="status ok">LINE เปิด Preview ให้แล้ว กดค้างที่รูปเพื่อบันทึก</div>';
+ }catch(e){result.innerHTML=`<div class="status err">${esc(errText(e))}</div>`;}
 }
 
 async function loadMonthlySummary(){
