@@ -53,6 +53,23 @@
     .row-actions{display:flex;gap:6px;flex-wrap:wrap}.row-actions button{border:0;border-radius:8px;padding:7px 9px;font-weight:800}
     pre{white-space:pre-wrap;word-break:break-word;background:#0f172a;color:#e2e8f0;border-radius:13px;padding:12px;font-size:12px}
   </style>
+<script>
+window.addEventListener('error',function(e){
+  var box=document.getElementById('appStatus');
+  if(box){
+    box.className='status err';
+    box.textContent=(e&&e.message)||'เกิดข้อผิดพลาดในการโหลดหน้า';
+  }
+});
+window.addEventListener('unhandledrejection',function(e){
+  var box=document.getElementById('appStatus');
+  if(box){
+    box.className='status err';
+    box.textContent=(e&&e.reason&&e.reason.message)||String((e&&e.reason)||'เกิดข้อผิดพลาดในการโหลดข้อมูล');
+  }
+});
+</script>
+
 </head>
 <body>
 <header>
@@ -478,7 +495,7 @@ function renderToday(){
 }
 
 function determineNextAction(){
- const mode=boot.employee.attendance_mode||"STANDARD";
+ const mode=(boot.employee&&boot.employee.attendance_mode)||"STANDARD";
  const events=today.events||[];
  const types=events.map(x=>x.event_type);
  const st=today.schedule?.schedule_status;
@@ -712,7 +729,7 @@ async function loadAdminDaily(){
   kpi.innerHTML=cards.map(([a,b])=>`<div class="metric"><span class="muted">${a}</span><b>${b} คน</b></div>`).join("");
 
   box.className="";
-  box.innerHTML=rows.length?`<table class="table"><thead><tr><th>พนักงาน</th><th>สถานะ</th><th>เข้า</th><th>ออก</th><th>ทำงาน</th></tr></thead><tbody>${rows.map(x=>`<tr><td>${esc(x.employee.employee_code)}<br>${esc(x.employee.name)}</td><td>${esc(x.work_status||x.schedule_status)}</td><td>${timeTH(x.first_in_at)}</td><td>${timeTH(x.last_out_at)}</td><td>${hours(x.paid_work_hours)}</td></tr>`).join("")}</tbody></table>`:'<div class="status">ไม่พบข้อมูล</div>';
+  box.innerHTML=rows.length?`<table class="table"><thead><tr><th>พนักงาน</th><th>สถานะ</th><th>เข้า</th><th>ออก</th><th>ทำงาน</th></tr></thead><tbody>${rows.map(x=>`<tr><td>${esc(x.(boot.employee&&boot.employee.employee_code))}<br>${esc(x.(boot.employee&&boot.employee.name))}</td><td>${esc(x.work_status||x.schedule_status)}</td><td>${timeTH(x.first_in_at)}</td><td>${timeTH(x.last_out_at)}</td><td>${hours(x.paid_work_hours)}</td></tr>`).join("")}</tbody></table>`:'<div class="status">ไม่พบข้อมูล</div>';
  }catch(e){
   kpi.innerHTML="";
   box.className="status err";
@@ -931,7 +948,7 @@ function drawEmployeeDailyA4(employeeReport,month){
 
  drawText(ctx,"Kitty Attendance",40,34,{size:18,weight:"700",color:"#0f172a"});
  drawText(ctx,"รายงานรายวันทั้งเดือน",40,62,{size:30,weight:"800"});
- drawText(ctx,`${employee.employee_code||""} - ${employee.name||""}`,40,104,{size:22,weight:"700"});
+ drawText(ctx,`${(boot.employee&&boot.employee.employee_code)||""} - ${(boot.employee&&boot.employee.name)||""}`,40,104,{size:22,weight:"700"});
  drawText(ctx,`เดือน ${month}`,40,134,{size:16,color:"#64748b"});
 
  const summary=employeeReport.summary||{};
@@ -1097,8 +1114,8 @@ async function previewMonthlyDailyA4Image(){
   const reports=r.reports||[];
   if(!reports.length){result.innerHTML='<div class="status">ไม่พบข้อมูลสำหรับสร้าง Preview</div>';return;}
   const rep=reports[0];
-  const filename=safeFileName(`daily_${month}_${rep.employee.employee_code}_${rep.employee.name}.png`);
-  showA4Preview(drawEmployeeDailyA4(rep,month),filename,employeeId?`Preview: ${esc(rep.employee.employee_code)} - ${esc(rep.employee.name)}`:`Preview คนแรกจากทั้งหมด ${reports.length} คน หากต้องการดูคนอื่นให้เลือกชื่อพนักงานก่อน`);
+  const filename=safeFileName(`daily_${month}_${rep.(boot.employee&&boot.employee.employee_code)}_${rep.(boot.employee&&boot.employee.name)}.png`);
+  showA4Preview(drawEmployeeDailyA4(rep,month),filename,employeeId?`Preview: ${esc(rep.(boot.employee&&boot.employee.employee_code))} - ${esc(rep.(boot.employee&&boot.employee.name))}`:`Preview คนแรกจากทั้งหมด ${reports.length} คน หากต้องการดูคนอื่นให้เลือกชื่อพนักงานก่อน`);
   result.innerHTML='<div class="status ok">สร้าง Preview แล้ว</div>';
  }catch(e){result.innerHTML=`<div class="status err">${esc(errText(e))}</div>`;}
 }
@@ -1127,7 +1144,7 @@ async function downloadMonthlyDailyA4Images(){
 
   let downloaded=0;
   for(const rep of reports){
-   const filename=safeFileName(`daily_${month}_${rep.employee.employee_code}_${rep.employee.name}.png`);
+   const filename=safeFileName(`daily_${month}_${rep.(boot.employee&&boot.employee.employee_code)}_${rep.(boot.employee&&boot.employee.name)}.png`);
    const ok=downloadCanvasPng(drawEmployeeDailyA4(rep,month),filename);
    if(ok)downloaded++;
    if(isLineWebView())break;
@@ -1190,7 +1207,7 @@ async function adminCreateEmployee(){
    department:document.getElementById("newEmployeeDepartment").value.trim()
   };
   const r=await api("admin_create_employee",payload);
-  result.innerHTML=`<div class="status ok">เพิ่ม ${esc(r.employee.employee_code)} - ${esc(r.employee.name)} สำเร็จ</div>`;
+  result.innerHTML=`<div class="status ok">เพิ่ม ${esc(r.(boot.employee&&boot.employee.employee_code))} - ${esc(r.(boot.employee&&boot.employee.name))} สำเร็จ</div>`;
   await loadAdminBootstrap();
  }catch(e){
   result.innerHTML=`<div class="status err">${esc(errText(e))}</div>`;
