@@ -74,71 +74,22 @@
   <section id="registrationCard" class="card hidden">
     <div class="section-head"><h2>ลงทะเบียนพนักงานใหม่</h2></div>
     <div class="status" style="margin-bottom:12px">
-      LINE User ID จะถูกดึงจากบัญชี LINE อัตโนมัติ และส่งให้แอดมินอนุมัติ
+      LINE User ID จะถูกดึงจากบัญชี LINE อัตโนมัติ<br>
+      กรอกเฉพาะชื่อ แล้วส่งให้แอดมินอนุมัติ
     </div>
 
-    <div class="grid2">
-      <div class="field"><label>รหัสพนักงาน *</label><input id="regEmployeeCode"></div>
-      <div class="field"><label>ชื่อพนักงาน *</label><input id="regName"></div>
+    <div class="field">
+      <label>ชื่อพนักงาน *</label>
+      <input id="regName" placeholder="กรอกชื่อพนักงาน">
     </div>
 
-    <div class="field"><label>LINE User ID</label><input id="regLineUserId" readonly></div>
-
-    <div class="grid2">
-      <div class="field"><label>Default Office *</label><select id="regOffice"></select></div>
-      <div class="field"><label>ประเภทพนักงาน *</label>
-        <select id="regAttendanceMode">
-          <option value="STANDARD">Standard</option>
-          <option value="MULTI_BRANCH">Multi-branch</option>
-          <option value="STOCK_REFILL">Stock refill</option>
-          <option value="DRIVER">คนขับรถ</option>
-        </select>
-      </div>
+    <div class="field">
+      <label>LINE User ID</label>
+      <input id="regLineUserId" readonly>
     </div>
-
-    <div class="grid2">
-      <div class="field"><label>ตำแหน่ง</label><input id="regPosition"></div>
-      <div class="field"><label>แผนก</label><input id="regDepartment"></div>
-    </div>
-
-    <div class="grid2">
-      <div class="field"><label>วันที่เริ่มงาน</label><input id="regStartDate" type="date"></div>
-      <div class="field"><label>ประเภทการหักเงิน</label><input id="regDeductionType"></div>
-    </div>
-
-    <div class="grid2">
-      <div class="field"><label>อนุญาตลงเวลาได้ทุกสาขา</label>
-        <select id="regAllowAnyOffice"><option value="false">ไม่อนุญาต</option><option value="true">อนุญาต</option></select>
-      </div>
-      <div class="field"><label>ต้องลงเวลาพัก</label>
-        <select id="regRequireBreak"><option value="true">ต้องลง</option><option value="false">ไม่ต้องลง</option></select>
-      </div>
-    </div>
-
-    <div class="grid2">
-      <div class="field"><label>หักภาษี ณ ที่จ่าย 3%</label>
-        <select id="regWht"><option value="false">ไม่ใช่</option><option value="true">ใช่</option></select>
-      </div>
-      <div class="field"><label>ประกันสังคม</label>
-        <select id="regSso"><option value="false">ไม่มี</option><option value="true">มี</option></select>
-      </div>
-    </div>
-
-    <div class="grid2">
-      <div class="field"><label>ต้องลงเวลา Branch Visit</label>
-        <select id="regRequireBranchVisit"><option value="false">ไม่ต้อง</option><option value="true">ต้องลง</option></select>
-      </div>
-      <div class="field"><label>จำนวน Branch Visit สูงสุด/วัน</label><input id="regMaxBranchVisits" type="number" min="0"></div>
-    </div>
-
-    <div class="field"><label>มีสิทธิ์ลา</label>
-      <select id="regLeaveEligible"><option value="true">มีสิทธิ์</option><option value="false">ไม่มีสิทธิ์</option></select>
-    </div>
-
-    <div class="field"><label>หมายเหตุ</label><textarea id="regNote"></textarea></div>
 
     <button class="secondary save" onclick="submitEmployeeRegistration()">ส่งคำขออนุมัติ</button>
-    <div id="registrationResult" style="margin-top:10px"></div>
+    <div id="registrationResult" style="margin-top:12px"></div>
   </section>
 
   <section id="profileCard" class="card hidden">
@@ -444,48 +395,35 @@ async function showRegistrationForm(){
  const card=document.getElementById("registrationCard");
  card.classList.remove("hidden");
 
- document.getElementById("regLineUserId").value=boot.profile?.userId||"";
- document.getElementById("regStartDate").value=bkkDate();
+ const lineInput=document.getElementById("regLineUserId");
+ if(lineInput)lineInput.value=boot.profile?.userId||"";
 
- const r=await api("registration_options");
- document.getElementById("regOffice").innerHTML=
-  '<option value="">เลือก Default Office</option>'+
-  (r.offices||[]).map(o=>`<option value="${o.id}">${esc(o.office_code)} - ${esc(o.name)}</option>`).join("");
-
- if(r.existingRequest){
-  document.getElementById("registrationResult").innerHTML=
-   `<div class="status">${esc(r.existingRequest.status)}: คำขอลงทะเบียนถูกส่งแล้ว</div>`;
+ try{
+  const r=await api("registration_options");
+  if(r.existingRequest){
+   const result=document.getElementById("registrationResult");
+   if(result){
+    result.innerHTML=`<div class="status">${esc(r.existingRequest.status)}: คำขอลงทะเบียนถูกส่งแล้ว</div>`;
+   }
+  }
+ }catch(e){
+  // Do not block the simple registration form if option loading fails.
  }
 }
 
 async function submitEmployeeRegistration(){
- const result=document.getElementById("registrationResult");
- try{
-  const payload={
-   employeeCode:document.getElementById("regEmployeeCode").value.trim(),
-   name:document.getElementById("regName").value.trim(),
-   assignedOfficeId:document.getElementById("regOffice").value||null,
-   allowAnyOffice:document.getElementById("regAllowAnyOffice").value==="true",
-   requireBreakClock:document.getElementById("regRequireBreak").value==="true",
-   deductionType:document.getElementById("regDeductionType").value.trim()||null,
-   wht3Percent:document.getElementById("regWht").value==="true",
-   sso:document.getElementById("regSso").value==="true",
-   active:true,
-   startDate:document.getElementById("regStartDate").value||null,
-   position:document.getElementById("regPosition").value.trim()||null,
-   department:document.getElementById("regDepartment").value.trim()||null,
-   attendanceMode:document.getElementById("regAttendanceMode").value,
-   requireBranchVisitClock:document.getElementById("regRequireBranchVisit").value==="true",
-   maxBranchVisitsPerDay:document.getElementById("regMaxBranchVisits").value
-    ?Number(document.getElementById("regMaxBranchVisits").value):null,
-   leaveEligible:document.getElementById("regLeaveEligible").value==="true",
-   note:document.getElementById("regNote").value.trim()||null
-  };
+ const name=document.getElementById("regName").value.trim();
+ if(!name){
+  alert("กรุณากรอกชื่อพนักงาน");
+  return;
+ }
 
-  const r=await api("submit_employee_registration",payload);
-  result.innerHTML=`<div class="status ok">ส่งคำขอสำเร็จ สถานะ: ${esc(r.registration.status)}</div>`;
+ try{
+  await api("submit_employee_registration",{name});
+  alert("ส่งคำขอแล้ว รอแอดมินอนุมัติ");
+  await bootstrap();
  }catch(e){
-  result.innerHTML=`<div class="status err">${esc(errText(e))}</div>`;
+  alert(errText(e));
  }
 }
 
@@ -1260,15 +1198,23 @@ async function adminCreateEmployee(){
 }
 
 async function previewLineReport() {
-  const r = await api("admin_report_preview", {
-    date: document.getElementById("reportDate").value,
-    reportType: document.getElementById("reportType").value
-  });
+  const box = document.getElementById("reportPreview");
+  box.textContent = "กำลังสร้างรายงาน…";
 
-  document.getElementById("reportPreview").textContent =
-    r.message || "";
+  try {
+    const r = await api("admin_report_preview", {
+      date: document.getElementById("reportDate").value,
+      reportType: document.getElementById("reportType").value
+    });
+
+    box.textContent = r.message || "สร้างรายงานแล้ว แต่ข้อความว่าง";
+  } catch (e) {
+    box.textContent = "สร้างรายงานไม่สำเร็จ:\\n" + errText(e);
+  }
 }
+
 async function sendLineReport() {
+  const box = document.getElementById("reportPreview");
   const reportType = document.getElementById("reportType").value;
   const label = reportType === "MIDDAY"
     ? "รายงาน 13:00"
@@ -1276,15 +1222,20 @@ async function sendLineReport() {
 
   if (!confirm(`ยืนยันส่ง ${label}`)) return;
 
-  const r = await api("admin_report_send", {
-    date: document.getElementById("reportDate").value,
-    reportType
-  });
+  box.textContent = `กำลังส่ง ${label}…`;
 
-  document.getElementById("reportPreview").textContent =
-    r.message || "ส่งสำเร็จ";
+  try {
+    const r = await api("admin_report_send", {
+      date: document.getElementById("reportDate").value,
+      reportType
+    });
 
-  alert(`ส่ง ${label} แล้ว`);
+    box.textContent = r.message || "ส่งสำเร็จ";
+    alert(`ส่ง ${label} แล้ว`);
+  } catch (e) {
+    box.textContent = `ส่ง ${label} ไม่สำเร็จ:\\n` + errText(e);
+    alert(`ส่ง ${label} ไม่สำเร็จ: ${errText(e)}`);
+  }
 }
 
 
