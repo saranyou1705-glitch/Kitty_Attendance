@@ -1300,5 +1300,25 @@ function cap(x){return x[0].toUpperCase()+x.slice(1)}
 function esc(x){return String(x??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;")}
 function errText(e){const x=String(e?.message||e);return({MISSING_LINE_TOKEN:"ไม่พบ LINE Token",INVALID_LINE_TOKEN:"LINE Token ไม่ถูกต้อง",EMPLOYEE_NOT_REGISTERED:"ไม่พบข้อมูลพนักงาน",ADMIN_REQUIRED:"ไม่มีสิทธิ์แอดมิน",REASON_REQUIRED:"ต้องกรอกเหตุผล",LINE_CHANNEL_TOKEN_MISSING:"ยังไม่ได้ตั้ง LINE_CHANNEL_ACCESS_TOKEN"}[x]||x)}
 </script>
+
+<script>
+window.adminSetEmplyeeActive = window.adminSetEmplyeeActive || async function(active){
+  if (typeof window.adminSetEmployeeActive === "function" && window.adminSetEmployeeActive !== window.adminSetEmplyeeActive) {
+    return window.adminSetEmployeeActive(active);
+  }
+  if (typeof window.setEmployeeActiveStatus === "function") {
+    return window.setEmployeeActiveStatus(active);
+  }
+  alert("ยังไม่พบฟังก์ชันจัดการสถานะพนักงาน กรุณาอัปเดต index.html");
+};
+
+window.adminSetEmployeeActive = window.adminSetEmployeeActive || async function(active){
+  if (typeof window.setEmployeeActiveStatus === "function") {
+    return window.setEmployeeActiveStatus(active);
+  }
+  return window.adminSetEmplyeeActive(active);
+};
+</script>
+
 </body>
 </html>
