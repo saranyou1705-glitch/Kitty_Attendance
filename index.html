@@ -290,6 +290,17 @@ window.addEventListener('unhandledrejection',function(e){
         </div>
         <button class="secondary save" onclick="adminCreateEmployee()">เพิ่มพนักงาน</button>
         <div id="employeeCreateResult" style="margin-top:10px"></div>
+        <hr style="margin:16px 0;border:0;border-top:1px solid var(--line)">
+        <h3>จัดการสถานะพนักงาน</h3>
+        <div class="field">
+          <label>เลือกพนักงาน</label>
+          <select id="employeeStatusSelect"></select>
+        </div>
+        <div class="grid2">
+          <button class="secondary save" onclick="adminSetEmployeeActive(true)">เปิดใช้งาน</button>
+          <button class="secondary danger" onclick="adminSetEmployeeActive(false)">ปิดใช้งาน / Inactive</button>
+        </div>
+        <div id="employeeStatusResult" style="margin-top:10px"></div>
       </div>
 
       <div id="adminReportTab" class="hidden">
@@ -701,11 +712,19 @@ async function loadAdminBootstrap(){
  const r=await api("admin_bootstrap"); employees=r.employees||[];
  const officeOpts=(r.offices||[]).map(o=>`<option value="${o.id}">${esc(o.office_code)} - ${esc(o.name)}</option>`).join("");
  document.getElementById("newEmployeeOffice").innerHTML='<option value="">ไม่ระบุ</option>'+officeOpts;
- const opts=employees.map(e=>`<option value="${e.id}">${esc(e.employee_code)} - ${esc(e.name)}</option>`).join("");
- document.getElementById("attendanceEmployee").innerHTML=opts;
- document.getElementById("scheduleEmployee").innerHTML=opts;
+
+ const activeEmployees=employees.filter(e=>e.active!==false);
+ const activeOpts=activeEmployees.map(e=>`<option value="${e.id}">${esc(e.employee_code)} - ${esc(e.name)}</option>`).join("");
+ const allOpts=employees.map(e=>`<option value="${e.id}">${esc(e.employee_code)} - ${esc(e.name)}${e.active===false?" (Inactive)":""}</option>`).join("");
+
+ document.getElementById("attendanceEmployee").innerHTML=activeOpts;
+ document.getElementById("scheduleEmployee").innerHTML=activeOpts;
+
  const a4Select=document.getElementById("a4ReportEmployee");
- if(a4Select){a4Select.innerHTML='<option value="">ทุกคน</option>'+opts;}
+ if(a4Select){a4Select.innerHTML='<option value="">ทุกคน</option>'+activeOpts;}
+
+ const statusSelect=document.getElementById("employeeStatusSelect");
+ if(statusSelect){statusSelect.innerHTML=allOpts;}
 }
 
 function showAdminTab(name,btn){
@@ -948,7 +967,7 @@ function drawEmployeeDailyA4(employeeReport,month){
 
  drawText(ctx,"Kitty Attendance",40,34,{size:18,weight:"700",color:"#0f172a"});
  drawText(ctx,"รายงานรายวันทั้งเดือน",40,62,{size:30,weight:"800"});
- drawText(ctx,`${(boot.employee&&boot.employee.employee_code)||""} - ${(boot.employee&&boot.employee.name)||""}`,40,104,{size:22,weight:"700"});
+ drawText(ctx,`${employee.employee_code||""} - ${employee.name||""}`,40,104,{size:22,weight:"700"});
  drawText(ctx,`เดือน ${month}`,40,134,{size:16,color:"#64748b"});
 
  const summary=employeeReport.summary||{};
