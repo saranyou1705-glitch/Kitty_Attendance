@@ -122,6 +122,7 @@ window.addEventListener('unhandledrejection',function(e){
       <div class="section-head"><h2>ลงเวลาวันนี้</h2><small id="todayLabel"></small></div>
       <div id="scheduleBox" class="schedule">กำลังโหลด…</div>
       <button id="nextActionBtn" class="primary-action btn-in" onclick="recordNextAction()">กำลังตรวจสอบ…</button>
+      <button id="resetClockButton" class="secondary hidden" style="margin-top:10px" onclick="forceUnlockClockButtons('manual')">รีเซ็ตปุ่มลงเวลา</button>
 
       <div id="driverActions" class="grid2 hidden" style="margin-top:10px">
         <button id="driverWorkBtn"
@@ -332,7 +333,7 @@ const CONFIG = {
 };
 const LABELS={IN:"เข้างาน",BREAK_OUT:"ออกพัก",BREAK_IN:"กลับจากพัก",OUT:"ออกงาน",
  DAY_IN:"เริ่มวัน",BRANCH_IN:"เข้าสาขา",BRANCH_OUT:"ออกจากสาขา",DAY_OUT:"จบวัน"};
-let boot=null,today=null,nextAction=null,saving=false,employees=[];
+let boot=null,today=null,nextAction=null,saving=false,savingStartedAt=0,employees=[];
 let realtimeTimer=null;
 
 document.addEventListener("DOMContentLoaded",init);
@@ -414,6 +415,9 @@ function startRealtimeRefresh(){
 
 document.addEventListener("visibilitychange",()=>{
  if(!document.hidden&&boot){
+  if(saving && savingStartedAt && Date.now()-savingStartedAt>10000){
+   forceUnlockClockButtons('visibility');
+  }
   loadToday().catch(()=>{});
  }
 });
@@ -637,17 +641,70 @@ async function recordNextAction(){
  await recordSpecificAction(nextAction);
 }
 
+
+function setClockButtonsDisabled(disabled){
+ const ids=["nextActionBtn","driverWorkBtn","driverBreakBtn","baBreakBtn","baEndDayBtn"];
+ ids.forEach(id=>{
+  const b=document.getElementById(id);
+  if(b)b.disabled=!!disabled;
+ });
+ const reset=document.getElementById("resetClockButton");
+ if(reset)reset.classList.toggle("hidden",!disabled);
+}
+
+function forceUnlockClockButtons(reason="auto"){
+ saving=false;
+ savingStartedAt=0;
+ setClockButtonsDisabled(false);
+
+ try{
+  if(today)determineNextAction();
+ }catch(e){
+  console.error("determineNextAction failed after unlock",e);
+ }
+
+ const reset=document.getElementById("resetClockButton");
+ if(reset)reset.classList.add("hidden");
+
+ if(reason==="manual"){
+  setStatus("รีเซ็ตปุ่มแล้ว กรุณาตรวจสอบรายการล่าสุดก่อนกดซ้ำ","ok");
+ }else if(reason==="timeout"){
+  setStatus("ระบบปลดล็อกปุ่มให้อัตโนมัติ เพราะคำสั่งก่อนหน้าค้างนานเกินไป กรุณาตรวจสอบรายการล่าสุดก่อนกดซ้ำ","err");
+ }
+}
+
+setInterval(()=>{
+ if(saving && savingStartedAt && Date.now()-savingStartedAt>30000){
+  forceUnlockClockButtons("timeout");
+ }
+},5000);
+
+
 async function recordSpecificAction(eventType){
- if(!eventType||saving)return;
+ if(!eventType)return;
+
+ if(saving){
+  const elapsed=Date.now()-savingStartedAt;
+  if(elapsed>30000){
+   forceUnlockClockButtons("timeout");
+  }else{
+   setStatus("ระบบกำลังบันทึกรายการก่อนหน้า กรุณารอสักครู่","err");
+   return;
+  }
+ }
+
  saving=true;
- document.getElementById("nextActionBtn").disabled=true;
- const driverWorkBtn=document.getElementById("driverWorkBtn");
- const driverBreakBtn=document.getElementById("driverBreakBtn");
- if(driverWorkBtn)driverWorkBtn.disabled=true;
- if(driverBreakBtn)driverBreakBtn.disabled=true;
+ savingStartedAt=Date.now();
+ setClockButtonsDisabled(true);
+
+ const resetTimer=setTimeout(()=>{
+  if(saving)forceUnlockClockButtons("timeout");
+ },30000);
+
  try{
   setStatus(`กำลังบันทึก ${LABELS[eventType]||eventType}…`);
   const pos=await geo();
+
   await api("record",{
    eventType,
    eventAt:new Date().toISOString(),
@@ -656,17 +713,28 @@ async function recordSpecificAction(eventType){
    longitude:pos.coords.longitude,
    gpsAccuracy:pos.coords.accuracy
   });
+
   await loadToday();
   await loadHistory();
   setStatus("บันทึกสำเร็จ","ok");
  }catch(e){
   setStatus(errText(e),"err");
  }finally{
+  clearTimeout(resetTimer);
   saving=false;
-  determineNextAction();
+  savingStartedAt=0;
+  setClockButtonsDisabled(false);
+
+  try{
+   determineNextAction();
+  }catch(e){
+   console.error("determineNextAction failed",e);
+  }
+
+  const reset=document.getElementById("resetClockButton");
+  if(reset)reset.classList.add("hidden");
  }
 }
-
 
 async function selfSetWeekendWfh(){
  if(!confirm("ยืนยันบันทึกวันนี้เป็น WFH 9 ชั่วโมง"))return;
@@ -1290,7 +1358,37 @@ function bangkokLocalToIso(value){
  return new Date(`${value}:00+07:00`).toISOString();
 }
 
-function geo(){return new Promise((ok,no)=>navigator.geolocation.getCurrentPosition(ok,e=>no(new Error("ไม่สามารถอ่าน GPS ได้")),{enableHighAccuracy:true,timeout:12000,maximumAge:0}))}
+function geo(){
+ return new Promise((ok,no)=>{
+  if(!navigator.geolocation){
+   no(new Error("อุปกรณ์นี้ไม่รองรับ GPS"));
+   return;
+  }
+
+  let done=false;
+  const timer=setTimeout(()=>{
+   if(done)return;
+   done=true;
+   no(new Error("GPS ใช้เวลานานเกินไป กรุณาปิดเปิด LIFF หรือเปิด Location แล้วลองใหม่"));
+  },15000);
+
+  navigator.geolocation.getCurrentPosition(
+   pos=>{
+    if(done)return;
+    done=true;
+    clearTimeout(timer);
+    ok(pos);
+   },
+   err=>{
+    if(done)return;
+    done=true;
+    clearTimeout(timer);
+    no(new Error("ไม่สามารถอ่าน GPS ได้ กรุณาอนุญาต Location แล้วลองใหม่"));
+   },
+   {enableHighAccuracy:true,timeout:12000,maximumAge:0}
+  );
+ });
+}
 function setStatus(m,t=""){const e=document.getElementById("appStatus");e.textContent=m;e.className="status "+t}
 function bkkDate(){return new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Bangkok",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date())}
 function thaiDate(v){if(!v)return"—";return new Intl.DateTimeFormat("th-TH",{day:"numeric",month:"short",year:"numeric"}).format(new Date(v+"T00:00:00+07:00"))}
