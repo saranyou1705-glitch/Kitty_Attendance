@@ -1,0 +1,3 @@
+[functions.rapid-processor-staging]
+verify_jwt = false
+
