@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex,nofollow" />
+  <title>Kitty Attendance — Staging</title>
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="preview-ribbon" id="environmentStatus">STAGING · กำลังเชื่อมต่อข้อมูลจริงแบบอ่านอย่างเดียว</div>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand"><span class="brand-mark">K</span><div><strong>Kitty Attendance</strong><small id="consoleName">Admin Console</small></div></div>
+      <nav id="desktopNav" aria-label="เมนูหลัก"></nav>
+    </aside>
+
+    <main>
+      <header class="topbar">
+        <div><h1 id="pageTitle">ภาพรวมวันนี้</h1></div>
+        <div class="top-actions">
+          <button class="icon-button" aria-label="แจ้งเตือน">♢<span class="notification-dot"></span></button>
+          <div class="workspace-switch" id="workspaceSwitch" hidden><button class="active" data-hr-view="work">งาน HR</button><button data-hr-view="personal">ของฉัน</button></div>
+          <label class="role-switch">ดูหน้าของ <select id="roleSelect"><option value="admin">Admin</option><option value="hr">HR · Head Office</option><option value="employee">Employee</option><option value="ba">BA</option><option value="driver">Driver</option></select></label>
+        </div>
+      </header>
+
+      <section class="content" id="content" aria-live="polite"></section>
+      <nav class="bottom-nav" id="bottomNav" aria-label="เมนูมือถือ"></nav>
+    </main>
+  </div>
+
+  <dialog id="employeeDialog">
+    <form method="dialog" id="employeeForm">
+      <div class="dialog-head"><div><p class="eyebrow">EMPLOYEE PROFILE</p><h2>เพิ่มพนักงานใหม่</h2></div><button class="icon-button" value="cancel" aria-label="ปิด">×</button></div>
+      <div class="form-grid">
+        <label>รหัสพนักงาน<input required placeholder="เช่น HO026" /></label>
+        <label>ชื่อ–นามสกุล<input required placeholder="ชื่อพนักงาน" /></label>
+        <label>บทบาท<select id="employeeRoleSelect"><option>Employee</option><option>HR</option><option>BA</option><option>Driver</option></select></label>
+        <label>รูปแบบลงเวลา<select><option>Office</option><option>Multi-branch (BA)</option><option>Driver</option></select></label>
+        <label>สำนักงานหลัก<select><option>Head Office</option><option>Central World</option><option>Siam Paragon</option></select></label>
+      </div>
+      <fieldset><legend>วันหยุดประจำสัปดาห์</legend><div class="day-picker"><label><input type="checkbox">จ</label><label><input type="checkbox">อ</label><label><input type="checkbox">พ</label><label><input type="checkbox">พฤ</label><label><input type="checkbox">ศ</label><label><input type="checkbox" checked>ส</label><label><input type="checkbox" checked>อา</label></div></fieldset>
+      <div class="dialog-actions"><button class="btn secondary" value="cancel">ยกเลิก</button><button class="btn primary" id="previewSave" value="default">บันทึกตัวอย่าง</button></div>
+    </form>
+  </dialog>
+  <dialog id="actionDialog" class="action-dialog">
+    <div class="dialog-head"><div><p class="eyebrow" id="actionEyebrow">PREVIEW WORKFLOW</p><h2 id="actionTitle">รายละเอียด</h2></div><button class="icon-button" id="closeActionDialog" aria-label="ปิด">×</button></div>
+    <div id="actionBody"></div>
+    <div class="dialog-actions"><button class="btn secondary" id="cancelActionDialog">ปิด</button><button class="btn primary" id="confirmActionDialog">ยืนยันใน Preview</button></div>
+  </dialog>
+  <div class="toast" id="toast" role="status">บันทึกใน Preview แล้ว — ไม่มีข้อมูลถูกส่งไป Production</div>
+  <script src="app.js"></script>
+</body>
+</html>

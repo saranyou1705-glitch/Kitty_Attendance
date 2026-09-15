@@ -17,4 +17,10 @@ This branch keeps the production page and `rapid-processor` unchanged.
 4. Verify employee, HR, and admin read-only views.
 5. Create separate staging tables before enabling any write action.
 
+The experimental UI lives in `staging/`. When opened from the configured LIFF
+endpoint it reads the signed-in employee, today's attendance, and (for an
+authorized admin) the live employee directory and daily summary from
+`rapid-processor-staging`. Write controls are disabled in the browser and are
+also rejected by the staging function.
+
 No production deployment is performed from this branch.

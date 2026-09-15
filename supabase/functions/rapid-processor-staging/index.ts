@@ -1233,6 +1233,7 @@ Deno.serve(async (req) => {
         profile,
         employee,
         isAdmin: !!admin,
+        adminRole: admin?.role || null,
         serverTime: new Date().toISOString(),
       });
     }
