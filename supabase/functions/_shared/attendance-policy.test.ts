@@ -24,13 +24,13 @@ test("overtime offsets only the next workday shortage and never carries", () => 
     sourceKind: "OVER",
     sourceMinutes: 90,
     nextDayOppositeMinutes: 45,
-  }), { appliedMinutes: 45, outcome: "APPLIED", carryForwardMinutes: 0 });
+  }), { appliedMinutes: 45, expiredMinutes: 45, deductionPendingMinutes: 0, outcome: "PARTIAL", carryForwardMinutes: 0 });
 
   assert.deepEqual(settleNextWorkday({
     sourceKind: "OVER",
     sourceMinutes: 90,
     nextDayOppositeMinutes: 0,
-  }), { appliedMinutes: 0, outcome: "EXPIRED", carryForwardMinutes: 0 });
+  }), { appliedMinutes: 0, expiredMinutes: 90, deductionPendingMinutes: 0, outcome: "EXPIRED", carryForwardMinutes: 0 });
 });
 
 test("unmatched shortage becomes deduction pending and never carries", () => {
@@ -38,5 +38,13 @@ test("unmatched shortage becomes deduction pending and never carries", () => {
     sourceKind: "SHORT",
     sourceMinutes: 30,
     nextDayOppositeMinutes: 0,
-  }), { appliedMinutes: 0, outcome: "DEDUCTION_PENDING", carryForwardMinutes: 0 });
+  }), { appliedMinutes: 0, expiredMinutes: 0, deductionPendingMinutes: 30, outcome: "DEDUCTION_PENDING", carryForwardMinutes: 0 });
+});
+
+test("a partially compensated shortage leaves only the remainder for payroll", () => {
+  assert.deepEqual(settleNextWorkday({
+    sourceKind: "SHORT",
+    sourceMinutes: 60,
+    nextDayOppositeMinutes: 30,
+  }), { appliedMinutes: 30, expiredMinutes: 0, deductionPendingMinutes: 30, outcome: "PARTIAL", carryForwardMinutes: 0 });
 });

@@ -6,7 +6,9 @@ export type CompensationInput = {
 
 export type CompensationResult = {
   appliedMinutes: number;
-  outcome: "APPLIED" | "EXPIRED" | "DEDUCTION_PENDING";
+  expiredMinutes: number;
+  deductionPendingMinutes: number;
+  outcome: "APPLIED" | "PARTIAL" | "EXPIRED" | "DEDUCTION_PENDING";
   carryForwardMinutes: 0;
 };
 
@@ -24,14 +26,15 @@ export function settleNextWorkday(input: CompensationInput): CompensationResult 
   const sourceMinutes = Math.max(0, Math.round(input.sourceMinutes));
   const oppositeMinutes = Math.max(0, Math.round(input.nextDayOppositeMinutes));
   const appliedMinutes = Math.min(sourceMinutes, oppositeMinutes);
-
-  if (appliedMinutes > 0) {
-    return { appliedMinutes, outcome: "APPLIED", carryForwardMinutes: 0 };
-  }
+  const remainder = sourceMinutes - appliedMinutes;
 
   return {
-    appliedMinutes: 0,
-    outcome: input.sourceKind === "OVER" ? "EXPIRED" : "DEDUCTION_PENDING",
+    appliedMinutes,
+    expiredMinutes: input.sourceKind === "OVER" ? remainder : 0,
+    deductionPendingMinutes: input.sourceKind === "SHORT" ? remainder : 0,
+    outcome: appliedMinutes > 0
+      ? (remainder > 0 ? "PARTIAL" : "APPLIED")
+      : (input.sourceKind === "OVER" ? "EXPIRED" : "DEDUCTION_PENDING"),
     carryForwardMinutes: 0,
   };
 }
