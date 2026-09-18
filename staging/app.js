@@ -11,7 +11,7 @@ let selectedScheduleDay=8;
 let personalCalendar={year:2026,month:8,day:8};
 const $=s=>document.querySelector(s);
 const LIVE_CONFIG={
- LIFF_ID:'2010336238-Ub6d565R',
+ LIFF_ID:'2010336238-UABz60wq',
  API_URL:'https://rlqecfzddxpywbbbiirg.supabase.co/functions/v1/rapid-processor-staging',
  TIMEOUT:15000
 };
