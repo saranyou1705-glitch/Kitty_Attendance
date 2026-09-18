@@ -1,0 +1,23 @@
+const {test}=require('node:test');
+const assert=require('node:assert/strict');
+const fs=require('node:fs');
+const vm=require('node:vm');
+// Set TYPESCRIPT_MODULE to an installed TypeScript package when running standalone.
+const ts=require(process.env.TYPESCRIPT_MODULE||'typescript');
+const original=fs.readFileSync(__dirname+'/../supabase/functions/rapid-processor-staging/index.ts','utf8');
+const js=ts.transpileModule(original.replace(/import \{ createClient \} from [^;]+;/,'const createClient = mockCreateClient;'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText;
+async function request(action,role='ADMIN',payload={}){
+ let handler,writes=0;
+ const employees=[{id:'ho',employee_code:'HO002',name:'Office Employee',attendance_mode:'STANDARD',active:true},{id:'ba',employee_code:'BA001',name:'BA Employee',attendance_mode:'MULTI_BRANCH',active:true},{id:'driver',employee_code:'HO099',name:'Driver',attendance_mode:'DRIVER',active:true},{id:'shane',employee_code:'HO001',name:'Shane Kitty',attendance_mode:'STANDARD',active:true}];
+ const tables={employees,admins:role?[{id:'a',role}]:[],offices:[],daily_attendance:employees.map(employee=>({employee_id:employee.id,employee,work_date:'2026-09-10',schedule_status:'WORK',paid_work_hours:8,first_in_at:'2026-09-10T02:00:00Z'})),employee_schedules:employees.map(employee=>({employee_id:employee.id,employee,work_date:'2026-09-10'}))};
+ function query(table){let data=tables[table]||[],single=false;const q={select(){return q},eq(key,value){if(!['line_user_id','active'].includes(key))data=data.filter(r=>r[key]===value);return q},in(key,ids){data=data.filter(r=>ids.includes(r[key]));return q},gte(){return q},lt(){return q},lte(){return q},order(){return q},limit(){return q},maybeSingle(){single=true;return q},then(resolve,reject){return Promise.resolve({data:single?data[0]||null:data,error:null}).then(resolve,reject)}};for(const method of ['insert','update','delete','upsert'])q[method]=()=>{writes++;throw Error('WRITE DETECTED')};return q}
+ const context=vm.createContext({console,Intl,Date,Set,Map,URL,Response,fetch:async()=>({ok:true,json:async()=>({userId:'user'})}),mockCreateClient:()=>({from:query,rpc(){writes++;throw Error('RPC WRITE DETECTED')}}),Deno:{env:{get:k=>k==='STAGING_WRITE_ENABLED'?'true':'test'},serve:fn=>handler=fn}});
+ vm.runInContext(js,context);const response=await handler(new Request('https://example.test/?action='+action,{method:'POST',headers:{'Content-Type':'application/json','x-line-access-token':'test'},body:JSON.stringify(payload)}));return {status:response.status,data:await response.json(),writes};
+}
+test('write actions blocked even if old write-enable secret is true',async()=>{for(const action of ['record','admin_update_event','admin_report_send','cron_report_send','admin_create_employee','self_weekend_wfh']){const r=await request(action);assert.equal(r.status,403);assert.equal(r.data.error,'STAGING_READ_ONLY');assert.equal(r.writes,0)}});
+test('HR directory and daily results exclude BA and Driver',async()=>{const directory=await request('admin_bootstrap','HR');assert.deepEqual(directory.data.employees.map(e=>e.id),['ho','shane']);const daily=await request('admin_daily','HR',{date:'2026-09-10'});assert.equal(daily.data.rows.length,2);assert.equal(daily.data.summary.checked_in,2)});
+test('HR cannot access LINE report or BA personal details',async()=>{assert.equal((await request('admin_report_preview','HR')).status,403);assert.equal((await request('admin_employee_day','HR',{employeeId:'ba',date:'2026-09-10'})).status,403)});
+test('HR monthly report excludes Shane as well as BA and Driver',async()=>{const r=await request('admin_monthly_summary','HR',{month:'2026-09'});assert.equal(r.status,200);assert.deepEqual(r.data.rows.map(e=>e.employee_code),['HO002'])});
+test('schedule endpoint returns only permitted HR employees',async()=>{const r=await request('staging_schedule','HR',{date:'2026-09-10'});assert.deepEqual(r.data.rows.map(e=>e.employee_id),['ho','shane']);assert.equal(r.writes,0)});
+test('ordinary employee cannot read admin directory',async()=>{assert.equal((await request('admin_bootstrap',null)).status,403)});
+test('LINE preview does not attempt any DB writes',async()=>{const r=await request('admin_report_preview','ADMIN',{date:'2026-09-10',reportType:'END_DAY'});assert.equal(r.writes,0);assert.equal(r.status,200)});

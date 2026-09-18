@@ -1,7 +1,6 @@
 
 // Supabase Edge Function: rapid-processor-staging
-// This is an isolated staging copy. It is read-only unless
-// STAGING_WRITE_ENABLED is explicitly set to "true".
+// This is an isolated, read-only staging copy. Write actions are always blocked.
 // Never deploy this file over rapid-processor.
 // Required secrets:
 // SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
@@ -30,6 +29,7 @@ const STAGING_READ_ACTIONS = new Set([
   "admin_a4_org_monthly_report",
   "admin_monthly_summary",
   "admin_report_preview",
+  "staging_schedule",
 ]);
 
 function json(data: unknown, status = 200) {
@@ -1066,10 +1066,7 @@ Deno.serve(async (req) => {
     const action = url.searchParams.get("action") || "bootstrap";
     const body = req.method === "POST" ? await req.json().catch(() => ({})) : {};
 
-    const stagingWriteEnabled =
-      (Deno.env.get("STAGING_WRITE_ENABLED") || "").toLowerCase() === "true";
-
-    if (!stagingWriteEnabled && !STAGING_READ_ACTIONS.has(action)) {
+    if (!STAGING_READ_ACTIONS.has(action)) {
       return json({
         ok: false,
         error: "STAGING_READ_ONLY",
@@ -1226,6 +1223,29 @@ Deno.serve(async (req) => {
 
     const employee = currentEmployee;
     const admin = currentAdmin;
+    const isHR = String(admin?.role || "").toUpperCase() === "HR";
+    let hrEmployees: any[] = [];
+    if (isHR) {
+      const allowedActions = new Set(["bootstrap", "today", "employee_month", "admin_bootstrap", "admin_daily", "admin_employee_day", "admin_monthly_summary", "staging_schedule"]);
+      if (!allowedActions.has(action)) return json({ok:false,error:"ADMIN_REQUIRED"},403);
+      const {data, error} = await supabase.from("employees").select("id,employee_code,name,attendance_mode");
+      if (error) throw error;
+      hrEmployees = (data || []).filter((e:any) => /^HO/i.test(e.employee_code || "") && !["MULTI_BRANCH", "DRIVER"].includes(String(e.attendance_mode).toUpperCase()));
+    }
+    const hrIds = new Set(hrEmployees.map(e => e.id));
+    const hrReportIds = new Set(hrEmployees.filter(e => !/\b(shane|peet)\b/i.test(e.name || "")).map(e => e.id));
+    if (isHR && action === "admin_employee_day" && !hrIds.has(String(body.employeeId || ""))) return json({ok:false,error:"FORBIDDEN"},403);
+
+    if (action === "staging_schedule") {
+      if (!admin) return json({ok:false,error:"ADMIN_REQUIRED"},403);
+      const date = String(body.date || bangkokDate());
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return json({ok:false,error:"INVALID_DATE"},400);
+      let query = supabase.from("employee_schedules").select("*,employee:employees(id,employee_code,name,attendance_mode),office:offices(name),shift:shifts(*)").eq("work_date",date);
+      if (isHR) query = query.in("employee_id", [...hrIds]);
+      const {data,error} = await query;
+      if (error) throw error;
+      return json({ok:true,date,rows:data || []});
+    }
 
     if (action === "bootstrap") {
       return json({
@@ -1238,11 +1258,11 @@ Deno.serve(async (req) => {
       });
     }
 
-    if (!employee) return json({ ok: false, error: "EMPLOYEE_NOT_REGISTERED", profile }, 403);
+    if (!employee && (!admin || ["today", "employee_month"].includes(action))) return json({ ok: false, error: "EMPLOYEE_NOT_REGISTERED", profile }, 403);
 
     if (action === "today") {
       const date = String(body.date || new Date().toISOString().slice(0, 10));
-      const [{ data: schedule }, { data: events }, { data: daily }] = await Promise.all([
+      const [{ data: schedule, error: scheduleError }, { data: events, error: eventError }, { data: daily, error: dailyError }] = await Promise.all([
         supabase.from("employee_schedules").select("*,office:offices(*),shift:shifts(*)")
           .eq("employee_id", employee.id).eq("work_date", date).maybeSingle(),
         supabase.from("attendance_events").select("*")
@@ -1250,6 +1270,7 @@ Deno.serve(async (req) => {
         supabase.from("daily_attendance").select("*")
           .eq("employee_id", employee.id).eq("work_date", date).maybeSingle(),
       ]);
+      if (scheduleError || eventError || dailyError) throw scheduleError || eventError || dailyError;
       return json({ ok: true, employee, schedule, events, daily });
     }
 
@@ -1700,7 +1721,7 @@ Deno.serve(async (req) => {
           .order("office_code")
       ]);
       if (error || officeError) throw error || officeError;
-      return json({ ok:true, employees:employees || [], offices:offices || [] });
+      return json({ ok:true, employees:isHR ? (employees || []).filter(e => hrIds.has(e.id)) : employees || [], offices:isHR ? [] : offices || [] });
     }
 
 
@@ -1775,12 +1796,14 @@ Deno.serve(async (req) => {
       if (!admin) return json({ ok:false,error:"ADMIN_REQUIRED" }, 403);
       const date = String(body.date || bangkokDate());
 
-      const { data: rows, error } = await supabase
+      const { data: allRows, error } = await supabase
         .from("daily_attendance")
         .select(`*,employee:employees(id,employee_code,name,attendance_mode)`)
         .eq("work_date", date)
         .order("employee_id");
       if (error) throw error;
+
+      const rows = isHR ? (allRows || []).filter(r => hrIds.has(r.employee_id)) : allRows;
 
       const summary = {
         checked_in: 0,
@@ -2196,6 +2219,7 @@ Deno.serve(async (req) => {
 
       const grouped: Record<string, any> = {};
       for (const r of data || []) {
+        if (isHR && !hrReportIds.has(r.employee_id)) continue;
         if (!r.employee?.active) continue;
         const key = r.employee_id;
         if (!grouped[key]) grouped[key] = {
@@ -2250,27 +2274,8 @@ Deno.serve(async (req) => {
       try {
         const message = await buildLineReport(supabase, date, reportType, true);
 
-        await supabase.from("report_logs").insert({
-          report_date: date,
-          report_type: reportType === "MIDDAY"
-            ? "PREVIEW_MIDDAY"
-            : "PREVIEW_END_DAY",
-          status: "PREVIEW",
-          message_preview: message.slice(0,500),
-          error_message: null,
-        });
-
         return json({ ok:true, date, reportType, message });
       } catch (error) {
-        await supabase.from("report_logs").insert({
-          report_date: date,
-          report_type: reportType === "MIDDAY"
-            ? "PREVIEW_MIDDAY"
-            : "PREVIEW_END_DAY",
-          status: "ERROR",
-          message_preview: null,
-          error_message: String(error?.message || error).slice(0,1000),
-        });
         throw error;
       }
     }

@@ -6,7 +6,7 @@
   <meta name="robots" content="noindex,nofollow" />
   <title>Kitty Attendance — Staging</title>
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="styles.css?v=20260918-live3" />
 </head>
 <body>
   <div class="preview-ribbon" id="environmentStatus">STAGING · กำลังเชื่อมต่อข้อมูลจริงแบบอ่านอย่างเดียว</div>
@@ -20,9 +20,7 @@
       <header class="topbar">
         <div><h1 id="pageTitle">ภาพรวมวันนี้</h1></div>
         <div class="top-actions">
-          <button class="icon-button" aria-label="แจ้งเตือน">♢<span class="notification-dot"></span></button>
           <div class="workspace-switch" id="workspaceSwitch" hidden><button class="active" data-hr-view="work">งาน HR</button><button data-hr-view="personal">ของฉัน</button></div>
-          <label class="role-switch">ดูหน้าของ <select id="roleSelect"><option value="admin">Admin</option><option value="hr">HR · Head Office</option><option value="employee">Employee</option><option value="ba">BA</option><option value="driver">Driver</option></select></label>
         </div>
       </header>
 
@@ -46,11 +44,11 @@
     </form>
   </dialog>
   <dialog id="actionDialog" class="action-dialog">
-    <div class="dialog-head"><div><p class="eyebrow" id="actionEyebrow">PREVIEW WORKFLOW</p><h2 id="actionTitle">รายละเอียด</h2></div><button class="icon-button" id="closeActionDialog" aria-label="ปิด">×</button></div>
+    <div class="dialog-head"><div><h2 id="actionTitle">รายละเอียด</h2></div><button class="icon-button" id="closeActionDialog" aria-label="ปิด">×</button></div>
     <div id="actionBody"></div>
-    <div class="dialog-actions"><button class="btn secondary" id="cancelActionDialog">ปิด</button><button class="btn primary" id="confirmActionDialog">ยืนยันใน Preview</button></div>
+    <div class="dialog-actions"><button class="btn secondary" id="cancelActionDialog">ปิด</button></div>
   </dialog>
-  <div class="toast" id="toast" role="status">บันทึกใน Preview แล้ว — ไม่มีข้อมูลถูกส่งไป Production</div>
-  <script src="app.js?v=20260918-2"></script>
+  <div class="toast" id="toast" role="status"></div>
+  <script src="app.js?v=20260918-live3"></script>
 </body>
 </html>
