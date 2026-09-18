@@ -33,7 +33,11 @@ async function initLive(){
  const status=$('#environmentStatus');
  try{
   await liff.init({liffId:LIVE_CONFIG.LIFF_ID});
-  if(!liff.isLoggedIn()){status.textContent='STAGING · เปิดผ่าน LINE เพื่อดูข้อมูลจริง';return}
+  if(!liff.isLoggedIn()){
+   status.textContent='STAGING · กำลังเข้าสู่ระบบ LINE';
+   liff.login({redirectUri:window.location.href});
+   return;
+  }
   live.bootstrap=await liveApi('bootstrap');live.connected=true;document.body.classList.add('live-readonly');
   const role=liveRole(live.bootstrap);$('#roleSelect').value=role;setRole(role);
   if(live.bootstrap.employee)live.today=await liveApi('today',{date:bkkDate()});
