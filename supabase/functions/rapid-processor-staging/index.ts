@@ -1223,7 +1223,8 @@ Deno.serve(async (req) => {
 
     const employee = currentEmployee;
     const admin = currentAdmin;
-    const isHR = String(admin?.role || "").toUpperCase() === "HR";
+    // Admin may inspect the HR workspace, but the preview only narrows access.
+    const isHR = String(admin?.role || "").toUpperCase() === "HR" || (!!admin && body.previewRole === "HR");
     let hrEmployees: any[] = [];
     if (isHR) {
       const allowedActions = new Set(["bootstrap", "today", "employee_month", "admin_bootstrap", "admin_daily", "admin_employee_day", "admin_monthly_summary", "staging_schedule"]);

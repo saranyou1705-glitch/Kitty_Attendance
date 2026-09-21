@@ -27,8 +27,12 @@ test('employee cannot navigate into admin pages through fabricated button',()=>{
  const {run,listeners}=setup();listeners.click({target:{closest:()=>({dataset:{page:'audit'}})}});assert.equal(run('state.page'),'clock');
 });
 test('work hours display actual paid_work_hours, not the net report balance',()=>{
- const {run}=setup();const html=run("dailyTable([{employee:{name:'Example'},work_date:'2026-09-01',paid_work_hours:9.81,net_hours:1.81}])");assert(html.includes('9.81'));assert(!html.includes('1.81'));
+ const {run}=setup();const html=run("dailyTable([{employee:{name:'Example'},work_date:'2026-09-01',paid_work_hours:9.81,net_hours:1.81}])");assert(html.includes('9 ชม. 49 นาที'));assert(!html.includes('1 ชม. 49 นาที'));
 });
+test('duration formatting handles minutes, negative balances and rounding rollover',()=>{const {run}=setup();assert.equal(run('hours(1.5)'),'1 ชม. 30 นาที');assert.equal(run('hours(-0.5)'),'-0 ชม. 30 นาที');assert.equal(run('hours(1.999)'),'2 ชม. 0 นาที');assert.equal(run('hours(null)'),'—');assert.equal(run('hours(0)'),'0 ชม. 0 นาที')});
+test('clock retains all four attendance buttons',async()=>{const {run}=setup(async()=>({ok:true,json:async()=>({ok:true,events:[]})}));run("state.boot={employee:{id:'self'}}");const html=await run('clockView()');for(const label of ['เข้างาน','ออกพัก','กลับจากพัก','ออกงาน'])assert(html.includes(label))});
+test('actual HR cannot switch into Admin workspace',()=>{const {run,listeners}=setup();run("state.role='hr';state.boot={isAdmin:true,adminRole:'HR'}");listeners.click({target:{closest:()=>({dataset:{workspace:'admin'}})}});assert.equal(run('state.role'),'hr')});
+test('Admin can inspect HR with server scoped requests',async()=>{const bodies=[];const {run,listeners}=setup(async(url,options)=>{bodies.push(JSON.parse(options.body));return {ok:true,json:async()=>({ok:true,summary:{},rows:[]})}});run("state.boot={isAdmin:true,adminRole:'ADMIN'};state.connected=true;state.role='admin'");listeners.click({target:{closest:()=>({dataset:{workspace:'hr'}})}});assert.equal(run('state.role'),'hr');assert.equal(bodies[0].previewRole,'HR');assert(!run('activeMenu().some(x=>x[0]===\"audit\")'))});
 test('entering schedule aligns calendar month and selected work date',()=>{
  const {run,listeners}=setup();run("state.role='admin';state.date='2026-09-21';state.month='2026-08';state.selected='2026-08-01'");listeners.click({target:{closest:()=>({dataset:{page:'schedule'}})}});assert.equal(run('state.month'),'2026-09');assert.equal(run('state.selected'),'2026-09-21');
 });

@@ -11,6 +11,8 @@ Open https://liff.line.me/2010336238-UABz60wq in LINE with a registered employee
 7. HR must not receive BA/Driver employees or LINE/system actions. HR monthly rows additionally exclude names matching Shane/Peet. Name-based exclusion is provisional until stable employee-ID exclusions are configured; fail-closed HO-code filtering may omit other Office employees.
 8. Switch Admin/HR to My Attendance. Create a half-day AM or PM leave draft; verify 240 required net minutes. Drafts are sessionStorage-only, isolated by employee ID, and explicitly NOT submitted or approved. Reload the same tab to check persistence. Closing the tab can remove them.
 9. Disconnect network and reload. An error and retry must appear, not fabricated data. The client no longer assumes a Failed to fetch is a browser/CORS fault.
+10. Admin: click ดูแบบ HR or open LIFF with ?view=hr. The server applies HR filtering for preview requests; switching back to Admin restores the original view and clears directory cache. This does not assign the HR role to the account. Actual HR/Employee must not be able to elevate access with the preview flag.
+11. Confirm clock-in, break-out, break-in and clock-out controls are present (disabled while staging remains read-only). All numeric duration fields use hours/minutes, including negative balances and totals; clock timestamps remain HH:mm.
 
 ## Limits that remain
 
