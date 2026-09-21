@@ -1803,7 +1803,21 @@ Deno.serve(async (req) => {
         .order("employee_id");
       if (error) throw error;
 
-      const rows = isHR ? (allRows || []).filter(r => hrIds.has(r.employee_id)) : allRows;
+      const {data: schedules, error: scheduleError} = await supabase
+        .from("employee_schedules")
+        .select("employee_id,work_date,schedule_status,required_hours,employee:employees(id,employee_code,name,attendance_mode)")
+        .eq("work_date",date);
+      if (scheduleError) throw scheduleError;
+      // A scheduled employee may have no daily_attendance row before clock-in.
+      // Keep their actual schedule visible without inventing attendance events.
+      const merged = new Map((allRows || []).map(r => [r.employee_id,r]));
+      for (const schedule of schedules || []) {
+        if (!merged.has(schedule.employee_id)) merged.set(schedule.employee_id,{
+          ...schedule,first_in_at:null,last_out_at:null,paid_work_hours:null,net_hours:null,
+        });
+      }
+      const visibleRows = [...merged.values()];
+      const rows = isHR ? visibleRows.filter(r => hrIds.has(r.employee_id)) : visibleRows;
 
       const summary = {
         checked_in: 0,

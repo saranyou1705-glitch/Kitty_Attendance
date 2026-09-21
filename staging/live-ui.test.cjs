@@ -26,6 +26,12 @@ test('half-day drafts require 240 net minutes and are isolated per employee',()=
 test('employee cannot navigate into admin pages through fabricated button',()=>{
  const {run,listeners}=setup();listeners.click({target:{closest:()=>({dataset:{page:'audit'}})}});assert.equal(run('state.page'),'clock');
 });
+test('work hours display actual paid_work_hours, not the net report balance',()=>{
+ const {run}=setup();const html=run("dailyTable([{employee:{name:'Example'},work_date:'2026-09-01',paid_work_hours:9.81,net_hours:1.81}])");assert(html.includes('9.81'));assert(!html.includes('1.81'));
+});
+test('entering schedule aligns calendar month and selected work date',()=>{
+ const {run,listeners}=setup();run("state.role='admin';state.date='2026-09-21';state.month='2026-08';state.selected='2026-08-01'");listeners.click({target:{closest:()=>({dataset:{page:'schedule'}})}});assert.equal(run('state.month'),'2026-09');assert.equal(run('state.selected'),'2026-09-21');
+});
 test('older request cannot replace a newer page',async()=>{
  let release;const {run,node}=setup(async()=>{await new Promise(resolve=>release=resolve);return {ok:true,json:async()=>({ok:true,summary:{},rows:[]})}});
  run("state.connected=true;state.role='admin';state.page='dashboard'");const first=run('render()');run("state.page='settings'");await run('render()');release();await first;assert(node('#content').innerHTML.includes('ตั้งค่าระบบ'));assert(!node('#content').innerHTML.includes('เข้างานแล้ว'));
