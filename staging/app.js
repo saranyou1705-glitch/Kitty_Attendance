@@ -27,6 +27,7 @@ async function api(action,payload={}){
  try{const r=await fetch(`${CONFIG.api}?action=${encodeURIComponent(action)}`,{method:'POST',headers:{'Content-Type':'application/json','x-line-access-token':token},body:JSON.stringify(request),signal:control.signal});let data;try{data=await r.json()}catch{throw new Error(`บริการข้อมูลตอบกลับไม่สมบูรณ์ (${r.status})`)}if(!r.ok||!data.ok)throw new Error(data.message||data.error||`HTTP ${r.status}`);return data}finally{clearTimeout(timer)}
 }
 function activeMenu(){return state.personal?menus.employee:menus[state.role]}
+function loginRedirect(){const url=new URL(location.origin+location.pathname);if(new URLSearchParams(location.search).get('view')==='hr')url.searchParams.set('view','hr');return url.href}
 function navigation(){
  const list=activeMenu();const render=items=>items.map(([id,icon,label])=>`<button class="nav-item ${state.page===id?'active':''}" data-page="${id}"><span>${icon}</span><span>${label}</span></button>`).join('');
  $('#desktopNav').innerHTML=render(list);
@@ -42,7 +43,7 @@ async function init(){
  try{
   if(!window.liff)throw new Error('โหลด LINE ไม่สำเร็จ กรุณาลองใหม่');
   await liff.init({liffId:CONFIG.liffId});
-  if(!liff.isLoggedIn()){liff.login({redirectUri:location.origin+location.pathname});return}
+  if(!liff.isLoggedIn()){$('#environmentStatus').textContent='STAGING · เข้าสู่ระบบเพื่อดูข้อมูลจริง';$('#content').innerHTML=panel('<h2>เข้าใช้งาน Kitty Attendance ผ่านเว็บ</h2><p>Admin และ HR เข้าด้วยบัญชี LINE ที่ผูกไว้กับระบบ</p><button class="btn primary" data-action="login">เข้าสู่ระบบด้วย LINE</button>');return}
   const started=Date.now();const boot=await api('bootstrap');
   if(boot.serverTime){const server=Date.parse(boot.serverTime);if(Number.isFinite(server))offset=server-(started+Date.now())/2}
   state.boot=boot;state.connected=true;state.role=String(boot.adminRole).toUpperCase()==='HR'?'hr':boot.isAdmin?'admin':'employee';state.personal=false;
@@ -69,7 +70,12 @@ async function calendarView(){
  const [month,day]=await Promise.all([api('employee_month',{month:state.month}),api('today',{date:state.selected})]);
  return `<p>${esc(person(state.boot.employee))}</p><div class="personal-calendar-layout">${panel(calendarGrid(month.rows))}${panel(`<h2>${displayDate(state.selected)}</h2>${eventsTable(day.events)}<p>ชั่วโมงทำงาน: ${hours(day.daily?.paid_work_hours)}</p>`)}</div>`;
 }
-async function reportView(){const d=await api('admin_monthly_summary',{month:state.month});return `<div class="reports-head"><h2>Monthly Summary</h2><label class="field">เดือน<input type="month" id="month" value="${state.month}"></label></div>${panel(`<p>เริ่ม ${esc(d.period_start)}${d.period_end_inclusive?' ถึง '+esc(d.period_end_inclusive):''}</p>${table(['พนักงาน','วันทำงาน','ชั่วโมงทำงาน','ชั่วโมงขาด','ชั่วโมงเกิน','เวลาชด','ชั่วโมงสุทธิ'],d.rows.map(r=>[person(r),r.work_days,hours(r.paid_work_hours),hours(r.short_hours),hours(r.over_hours),hours(r.makeup_hours),hours(r.net_hours)]))}<p class="panel-sub">ยอดจากระบบเดิม ยังไม่รวมกฎเวลาชดและค่าขอแก้เวลาเวอร์ชันทดลอง</p><button class="btn secondary" data-action="print">พิมพ์ / บันทึก PDF</button><button class="btn secondary" data-page="dashboard">รายงานรายวัน</button>`)}`}
+async function reportView(){
+ const daily=state.reportPeriod!=='monthly';
+ const tabs=`<div class="tabs report-tabs"><button class="tab ${daily?'active':''}" data-report-period="daily">รายงานรายวัน</button><button class="tab ${!daily?'active':''}" data-report-period="monthly">Monthly Summary</button></div>`;
+ if(daily){const d=await api('admin_daily',{date:state.date});return `${tabs}<div class="reports-head"><h2>รายงานรายวัน</h2>${dayPicker()}</div>${panel(`<div class="print-heading"><h2>Kitty Attendance · รายงานรายวัน</h2><p>${displayDate(state.date)} · ${state.role==='hr'?'Head Office':'ทุกกลุ่มพนักงาน'}</p></div>${table(['พนักงาน','สถานะ','เข้างาน','ออกพัก','กลับจากพัก','ออกงาน','ทำงาน','ขาด','เกิน'],d.rows.map(r=>[person(r.employee),r.schedule_status||r.work_status||'—',time(r.first_in_at),time(r.break_out_at),time(r.break_in_at),time(r.last_out_at),hours(r.paid_work_hours),hours(r.short_hours),hours(r.over_hours)]))}<button class="btn primary" data-action="print">พิมพ์ / บันทึก PDF</button><button class="btn secondary" data-action="retry">โหลดรายงานใหม่</button>`)}`}
+ const d=await api('admin_monthly_summary',{month:state.month});return `${tabs}<div class="reports-head"><h2>Monthly Summary</h2><label class="field">เดือน<input type="month" id="month" value="${state.month}"></label></div>${panel(`<div class="print-heading"><h2>Kitty Attendance · Monthly Summary</h2><p>${esc(state.month)} · ${state.role==='hr'?'Head Office ยกเว้น Shane และ Peet':'ทุกกลุ่มพนักงาน'}</p></div><p>เริ่ม ${esc(d.period_start)}${d.period_end_inclusive?' ถึง '+esc(d.period_end_inclusive):''}</p>${table(['พนักงาน','วันทำงาน','ชั่วโมงทำงาน','ชั่วโมงขาด','ชั่วโมงเกิน','เวลาชด','ชั่วโมงสุทธิ'],d.rows.map(r=>[person(r),r.work_days,hours(r.paid_work_hours),hours(r.short_hours),hours(r.over_hours),hours(r.makeup_hours),hours(r.net_hours)]))}<p class="panel-sub">ยอดจากระบบเดิม ยังไม่รวมกฎเวลาชดและค่าขอแก้เวลาเวอร์ชันทดลอง</p><button class="btn primary" data-action="print">พิมพ์ / บันทึก PDF</button>`)}`;
+}
 async function lineView(){const type=state.reportType||'END_DAY';const d=await api('admin_report_preview',{date:state.date,reportType:type});return `${dayPicker()}<label class="field">รายงาน<select id="reportType"><option value="MIDDAY" ${type==='MIDDAY'?'selected':''}>13:00</option><option value="END_DAY" ${type==='END_DAY'?'selected':''}>22:00</option></select></label>${panel(`<pre class="report-message">${esc(d.message)}</pre>${disabled('Send Now')}`)}`}
 function draftKey(){return `kitty-staging-drafts:${state.boot?.employee?.id||state.boot?.profile?.userId||'unlinked'}`}
 function drafts(){try{return JSON.parse(sessionStorage.getItem(draftKey())||'[]')}catch{return []}}
@@ -95,6 +101,7 @@ async function showEmployee(id){
 }
 document.addEventListener('click',e=>{
  const b=e.target.closest('button');if(!b||b.disabled)return;
+ if(b.dataset.reportPeriod){if(!['admin','hr'].includes(state.role)||state.personal)return;state.reportPeriod=b.dataset.reportPeriod;render();return}
  if(b.dataset.page){if(!activeMenu().some(x=>x[0]===b.dataset.page)&&!(b.dataset.page==='more'&&activeMenu().length>5))return;state.page=b.dataset.page;if(state.page==='schedule'){state.month=state.date.slice(0,7);state.selected=state.date}render();return}
  if(b.dataset.workspace){const actualHR=String(state.boot?.adminRole).toUpperCase()==='HR';if(!state.boot?.isAdmin||actualHR&&b.dataset.workspace!=='hr')return;if(!['admin','hr'].includes(b.dataset.workspace))return;state.role=b.dataset.workspace;state.personal=false;state.directory=null;state.page='dashboard';render();return}
  if(b.dataset.hrView){state.personal=b.dataset.hrView==='personal';state.page=state.personal?'clock':'dashboard';render();return}
@@ -104,7 +111,7 @@ document.addEventListener('click',e=>{
  if(b.dataset.removeDraft){try{sessionStorage.setItem(draftKey(),JSON.stringify(drafts().filter(d=>d.id!==b.dataset.removeDraft)));render()}catch{toast('ไม่สามารถลบแบบร่างได้')}return}
  if(b.dataset.action==='retry'){render();return}
  if(b.dataset.action==='reconnect'){init();return}
- if(b.dataset.action==='login'){if(window.liff){liff.logout();liff.login({redirectUri:location.origin+location.pathname})}else location.reload();return}
+ if(b.dataset.action==='login'){if(window.liff){if(liff.isLoggedIn())liff.logout();liff.login({redirectUri:loginRedirect()})}else location.reload();return}
  if(b.dataset.action==='personal-leave'){state.personal=true;state.page='my-leave';render();return}
  if(b.dataset.action==='print')window.print();
 });
