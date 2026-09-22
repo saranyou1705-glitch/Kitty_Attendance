@@ -75,3 +75,16 @@ test('older request cannot replace a newer page',async()=>{
 });
 test('daily report loads selected date and HR scope with break columns and print action',async()=>{const calls=[];const {run}=setup(async(url,options)=>{calls.push({action:new URL(url).searchParams.get('action'),body:JSON.parse(options.body)});return {ok:true,json:async()=>({ok:true,rows:[{employee:{name:'Actual employee'},paid_work_hours:8.5,break_out_at:'2026-09-20T05:00:00Z'}]})}});run("state.role='hr';state.date='2026-09-20'");const html=await run('reportView()');assert.equal(calls[0].action,'admin_daily');assert.equal(calls[0].body.date,'2026-09-20');assert.equal(calls[0].body.previewRole,'HR');assert(html.includes('8 ชม. 30 นาที'));assert(html.includes('ออกพัก'));assert(html.includes('data-action=\"print\"'));assert(!html.includes('data-page=\"dashboard\"'))});
 test('monthly report stays available as a separate tab',async()=>{let action;const {run}=setup(async(url)=>{action=new URL(url).searchParams.get('action');return {ok:true,json:async()=>({ok:true,rows:[],period_start:'2026-09-01'})}});run("state.reportPeriod='monthly'");const html=await run('reportView()');assert.equal(action,'admin_monthly_summary');assert(html.includes('data-report-period=\"daily\"'))});
+test('calendar shows real entry time, off days, missing data and accessible selection',()=>{
+ const {run}=setup();run("state.month='2026-09';state.selected='2026-09-02'");
+ const html=run("calendarGrid([{work_date:'2026-09-01',first_in_at:'2026-09-01T02:15:00Z'},{work_date:'2026-09-02',schedule_status:'OFF'}])");
+ assert(html.includes('09:15'));assert(html.includes('วันหยุด'));assert(html.includes('ไม่มีข้อมูล'));assert(html.includes('aria-pressed="true"'));assert(!html.includes('ขาดงาน'));
+});
+test('schedule joins real attendance and preserves HR server scope',async()=>{
+ const calls=[];const {run}=setup(async(url,options)=>{const action=new URL(url).searchParams.get('action'),body=JSON.parse(options.body);calls.push({action,body});return {ok:true,json:async()=>({ok:true,rows:action==='staging_schedule'?[{employee_id:'ho',employee:{name:'Office'},schedule_status:'WORK',required_hours:8}]:[{employee_id:'ho',first_in_at:'2026-09-22T02:15:00Z',paid_work_hours:4.5}]})}});
+ run("state.role='hr';state.date='2026-09-22'");const html=await run('scheduleView()');
+ assert(html.includes('09:15'));assert(html.includes('4 ชม. 30 นาที'));assert(html.includes('data-employee="ho"'));assert(calls.every(c=>c.body.previewRole==='HR'));
+});
+test('icons use fixed viewBox vectors instead of platform-dependent glyphs',()=>{
+ const {run,node}=setup();run("navigation()");assert(node('#bottomNav').innerHTML.includes('<svg'));assert(!node('#bottomNav').innerHTML.includes('◷'));assert(run("disabled('ออกพัก')").includes('<svg'));
+});
