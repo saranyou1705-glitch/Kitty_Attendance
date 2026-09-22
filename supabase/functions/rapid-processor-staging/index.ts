@@ -25,6 +25,7 @@ const STAGING_READ_ACTIONS = new Set([
   "admin_bootstrap",
   "admin_daily",
   "admin_employee_day",
+  "admin_individual_report",
   "admin_a4_employee_daily_report",
   "admin_a4_org_monthly_report",
   "admin_monthly_summary",
@@ -1227,7 +1228,7 @@ Deno.serve(async (req) => {
     const isHR = String(admin?.role || "").toUpperCase() === "HR" || (!!admin && body.previewRole === "HR");
     let hrEmployees: any[] = [];
     if (isHR) {
-      const allowedActions = new Set(["bootstrap", "today", "employee_month", "admin_bootstrap", "admin_daily", "admin_employee_day", "admin_monthly_summary", "staging_schedule"]);
+      const allowedActions = new Set(["bootstrap", "today", "employee_month", "admin_bootstrap", "admin_daily", "admin_employee_day", "admin_monthly_summary", "admin_individual_report", "staging_schedule"]);
       if (!allowedActions.has(action)) return json({ok:false,error:"ADMIN_REQUIRED"},403);
       const {data, error} = await supabase.from("employees").select("id,employee_code,name,attendance_mode");
       if (error) throw error;
@@ -1236,6 +1237,65 @@ Deno.serve(async (req) => {
     const hrIds = new Set(hrEmployees.map(e => e.id));
     const hrReportIds = new Set(hrEmployees.filter(e => !/\b(shane|peet)\b/i.test(e.name || "")).map(e => e.id));
     if (isHR && action === "admin_employee_day" && !hrIds.has(String(body.employeeId || ""))) return json({ok:false,error:"FORBIDDEN"},403);
+
+    if (action === "admin_individual_report") {
+      if (!admin) return json({ok:false,error:"ADMIN_REQUIRED"},403);
+      const employeeId = String(body.employeeId || "");
+      const month = String(body.month || "");
+      if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month) || Number(month.slice(0,4)) < 1900 || Number(month.slice(0,4)) > 9998) return json({ok:false,error:"INVALID_MONTH"},400);
+      if (!employeeId) return json({ok:false,error:"EMPLOYEE_REQUIRED"},400);
+      if (isHR && !hrReportIds.has(employeeId)) return json({ok:false,error:"FORBIDDEN"},403);
+      const {data:person,error:personError} = await supabase.from("employees").select("id,employee_code,name,attendance_mode,active").eq("id",employeeId).maybeSingle();
+      if (personError) throw personError;
+      if (!person) return json({ok:false,error:"EMPLOYEE_NOT_FOUND"},404);
+      const start = month + "-01";
+      const next = new Date(start + "T00:00:00Z");
+      next.setUTCMonth(next.getUTCMonth()+1);
+      const end = next.toISOString().slice(0,10);
+      const [daily,schedules] = await Promise.all([
+        supabase.from("daily_attendance").select("work_date,schedule_status,first_in_at,break_out_at,break_in_at,last_out_at,paid_work_hours,short_hours,over_hours,makeup_hours,work_status").eq("employee_id",employeeId).gte("work_date",start).lt("work_date",end).order("work_date"),
+        supabase.from("employee_schedules").select("work_date,schedule_status,notes").eq("employee_id",employeeId).gte("work_date",start).lt("work_date",end).order("work_date"),
+      ]);
+      if (daily.error || schedules.error) throw daily.error || schedules.error;
+      // Report only real submitted records. A missing request table is NOT an empty history.
+      const warnings:string[] = [];
+      async function requestRows(table:string, dateColumn:string, columns:string, label:string) {
+        const found = new Map();
+        for (const column of [dateColumn,"created_at"]) {
+          for (let offset=0;;offset+=500) {
+            const result = await supabase.from(table).select(columns).eq("employee_id",employeeId)
+              .gte(column,column==="created_at" ? start+"T00:00:00+07:00" : start)
+              .lt(column,column==="created_at" ? end+"T00:00:00+07:00" : end)
+              .order("id").range(offset,offset+499);
+            if (result.error) {
+              if (["42P01","PGRST205"].includes(result.error.code)) { warnings.push(`ยังไม่เชื่อมประวัติ${label} จึงยืนยันไม่ได้ว่าไม่มีคำขอ`); return []; }
+              throw result.error;
+            }
+            for (const row of result.data || []) found.set(row.id,row);
+            if ((result.data || []).length < 500) break;
+          }
+        }
+        return [...found.values()];
+      }
+      const [leave,corrections] = await Promise.all([
+        requestRows("leave_requests_v2","leave_date","id,leave_date,duration,status,reason,created_at","คำขอลา"),
+        requestRows("attendance_correction_requests","work_date","id,work_date,requested_event_type,requested_event_at,reason,status,created_at,approved_sequence_in_month,deduction_amount","คำขอแก้เวลา"),
+      ]);
+      const requests = [
+        ...leave.map(r=>({...r,kind:"leave",effective_date:r.leave_date})),
+        ...corrections.map(r=>({...r,kind:"correction",effective_date:r.work_date})),
+      ].sort((a,b)=>String(a.created_at).localeCompare(String(b.created_at)));
+      const byDaily = new Map<string,any>((daily.data || []).map(r=>[r.work_date,r]));
+      const bySchedule = new Map<string,any>((schedules.data || []).map(r=>[r.work_date,r]));
+      const rows = [];
+      for (let day=1;day<=new Date(next.getTime()-86400000).getUTCDate();day++) {
+        const date = month+"-"+String(day).padStart(2,"0");
+        const schedule = bySchedule.get(date);
+        rows.push({work_date:date,schedule_status:schedule?.schedule_status || (date>bangkokDate()?"FUTURE":"NO_SCHEDULE"),...byDaily.get(date),schedule_note:schedule?.notes || null,
+          requests:requests.filter(r=>r.effective_date===date || (r.created_at && new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Bangkok",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date(r.created_at))===date))});
+      }
+      return json({ok:true,employee:person,month,rows,warnings,generated_at:new Date().toISOString()});
+    }
 
     if (action === "staging_schedule") {
       if (!admin) return json({ok:false,error:"ADMIN_REQUIRED"},403);

@@ -1,5 +1,23 @@
 # Live-data staging verification
 
+## Individual Excel report (live7)
+
+Reports → รายบุคคล / Excel → choose employee and month → ดาวน์โหลด Excel.
+One worksheet contains every calendar date, Bangkok clock times, net paid work,
+short/over/makeup duration, schedule notes, and submitted leave/correction records.
+The file is generated locally in the browser using the vendored ExcelJS 4.4.0 bundle
+(MIT, https://github.com/exceljs/exceljs). No report data is sent to a spreadsheet service.
+
+- HR reports are restricted server-side to Head Office excluding Shane/Peet; Admin retains all groups.
+- Check absent attendance stays blank while real zero remains zero. Durations display hours/minutes.
+- Request notes appear on both effective and Bangkok submission dates, with both dates explicitly labeled. These repeated notes are not separate requests or repeated deductions.
+- Approved correction ordinal and deduction are displayed only from persisted source fields. No penalties are calculated or written by the report.
+- Missing request tables produce explicit warnings, not an empty-history assertion. Other database errors fail the report. Local drafts are excluded.
+- Validate September, February/leap year, inactive employees and prior months. Cross-check the exported employee/month with the selector and download timestamp.
+- Native browser download / Excel desktop manual check remains necessary: automated browser access was blocked by the tool's permission review during this change. Programmatic XLSX round-trip tests and Artifact Tool import/render verification passed with synthetic test data.
+
+Automated tests: `node --test staging/live-ui.test.cjs staging/individual-report.test.cjs` and `TYPESCRIPT_MODULE=<installed-typescript> node --test staging/read-only-api.test.cjs`.
+
 Open https://liff.line.me/2010336238-UABz60wq in LINE with a registered employee account.
 
 1. Check Bangkok date/time against a clock. Time uses serverTime from bootstrap plus elapsed device time and updates every second.

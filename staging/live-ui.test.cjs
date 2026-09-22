@@ -6,7 +6,7 @@ const source=fs.readFileSync(__dirname+'/app.js','utf8').replace('navigation();i
 function setup(fetcher){
  const nodes=new Map(),listeners={},storage=new Map();
  const node=key=>{if(!nodes.has(key))nodes.set(key,{innerHTML:'',textContent:'',hidden:false,value:'',classList:{add(){},remove(){},toggle(){}},showModal(){}});return nodes.get(key)};
- const context=vm.createContext({console,Intl,Date,Number,String,Set,Map,JSON,Promise,AbortController,FormData,crypto:require('node:crypto').webcrypto,setTimeout,clearTimeout,setInterval(){},window:{liff:{getAccessToken:()=> 'test-token'}},document:{querySelector:node,querySelectorAll:()=>[],addEventListener:(key,fn)=>listeners[key]=fn},sessionStorage:{getItem:k=>storage.get(k),setItem:(k,v)=>storage.set(k,v)},fetch:fetcher||(async()=>{throw Error('Failed to fetch')})});
+ const context=vm.createContext({console,Intl,Date,Number,String,Set,Map,JSON,Promise,AbortController,FormData,crypto:require('node:crypto').webcrypto,setTimeout,clearTimeout,setInterval(){},window:{KittyIndividualReport:require('./individual-report.js'),liff:{getAccessToken:()=> 'test-token'}},document:{querySelector:node,querySelectorAll:()=>[],addEventListener:(key,fn)=>listeners[key]=fn},sessionStorage:{getItem:k=>storage.get(k),setItem:(k,v)=>storage.set(k,v)},fetch:fetcher||(async()=>{throw Error('Failed to fetch')})});
  vm.runInContext(source,context);return {run:code=>vm.runInContext(code,context),node,listeners};
 }
 test('Bangkok clock converts timestamps and no fixed demo clock remains',()=>{
@@ -22,6 +22,11 @@ test('failed load displays error, never fabricated attendance',async()=>{
 });
 test('half-day drafts require 240 net minutes and are isolated per employee',()=>{
  const {run}=setup();run("state.boot={employee:{id:'first'}}");assert(run('leaveView()').includes('HALF_DAY_AM'));assert(run('leaveView()').includes('HALF_DAY_PM'));run("sessionStorage.setItem(draftKey(),JSON.stringify([{kind:'leave',date:'2026-09-18',label:'PRIVATE DRAFT'}]))");assert(run("draftHistory('leave')").includes('PRIVATE DRAFT'));run("state.boot={employee:{id:'second'}}");assert(!run("draftHistory('leave')").includes('PRIVATE DRAFT'));assert(source.includes("requiredNetMinutes:leave&&data.duration!=='FULL_DAY'?240:0"));
+});
+test('individual report selector preserves HR scope and loads selected employee/month',async()=>{
+ const calls=[];const {run}=setup(async(url,options)=>{const action=new URL(url).searchParams.get('action');const body=JSON.parse(options.body);calls.push({action,body});return {ok:true,json:async()=>action==='admin_bootstrap'?{ok:true,employees:[{id:'ho',employee_code:'HO002',name:'Office'},{id:'shane',employee_code:'HO001',name:'Shane'},{id:'peet',employee_code:'HO003',name:'Peet'}],offices:[]}:{ok:true,employee:{id:'ho',employee_code:'HO002',name:'Office'},month:'2026-09',warnings:['ยังไม่เชื่อมประวัติคำขอลา'],rows:[{work_date:'2026-09-01',paid_work_hours:8}]}}});
+ run("state.role='hr';state.page='reports';state.month='2026-09';state.reportPeriod='individual';state.reportEmployee='ho'");
+ const html=await run('reportView()');assert(html.includes('ดาวน์โหลด Excel'));assert(html.includes('8 ชม. 0 นาที'));assert(html.includes('ยังไม่เชื่อม'));assert(!html.includes('value="shane"'));assert(!html.includes('value="peet"'));assert.equal(run('state.individualReport.employee.id'),'ho');assert.deepEqual(calls[1],{action:'admin_individual_report',body:{employeeId:'ho',month:'2026-09',previewRole:'HR'}});
 });
 test('employee cannot navigate into admin pages through fabricated button',()=>{
  const {run,listeners}=setup();listeners.click({target:{closest:()=>({dataset:{page:'audit'}})}});assert.equal(run('state.page'),'clock');
