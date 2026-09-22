@@ -2,8 +2,8 @@
 const $ = s => document.querySelector(s);
 const CONFIG = {liffId:'2010336238-UABz60wq', api:'https://rlqecfzddxpywbbbiirg.supabase.co/functions/v1/rapid-processor-staging'};
 const menus = {
- admin:[['dashboard','⌂','ภาพรวมวันนี้'],['employees','♙','พนักงาน'],['offices','◇','Office / Branch'],['schedule','□','ตารางงาน'],['attendance','◷','แก้ไขเวลา'],['clock-approvals','✓','คำขอลงเวลา'],['leave','✈','การลา'],['reports','▤','รายงาน'],['line','◉','LINE Report'],['audit','≋','Audit Log'],['settings','⚙','ตั้งค่าระบบ']],
- hr:[['dashboard','⌂','ภาพรวมวันนี้'],['employees','♙','พนักงาน'],['schedule','□','ตารางงาน'],['clock-approvals','✓','คำขอลงเวลา'],['leave','✈','การลา'],['reports','▤','รายงาน']],
+ admin:[['dashboard','⌂','ภาพรวมวันนี้'],['employees','♙','พนักงาน'],['offices','◇','Office / Branch'],['schedule','□','ตารางงาน'],['attendance','◷','แก้ไขเวลา'],['clock-approvals','✓','ขอลงเวลา'],['leave','✈','ขอลา'],['reports','▤','รายงาน'],['line','◉','LINE Report'],['audit','≋','Audit Log'],['settings','⚙','ตั้งค่าระบบ']],
+ hr:[['dashboard','⌂','ภาพรวมวันนี้'],['employees','♙','พนักงาน'],['schedule','□','ตารางงาน'],['clock-approvals','✓','ขอลงเวลา'],['leave','✈','ขอลา'],['reports','▤','รายงาน']],
  employee:[['clock','◷','ลงเวลา'],['clock-request','＋','ขอลงเวลา'],['calendar','□','ปฏิทินของฉัน'],['my-leave','✈','การลาของฉัน']]
 };
 
@@ -45,11 +45,12 @@ function activeMenu(){return state.personal?menus.employee:menus[state.role]}
 function loginRedirect(){const url=new URL('https://saranyou1705-glitch.github.io/Kitty_Attendance_Staging/');if(new URLSearchParams(location.search).get('view')==='hr')url.searchParams.set('view','hr');return url.href}
 function navigation(){
  $('#pageHeader').hidden=state.connected&&['dashboard','clock'].includes(state.page);
- const list=activeMenu();const render=items=>items.map(([id,icon,label])=>`<button class="nav-item ${state.page===id?'active':''}" aria-current="${state.page===id?'page':'false'}" data-page="${id}"><span class="nav-symbol">${uiIcon(id)}</span><span>${label}</span></button>`).join('');
- const hrMenu=['dashboard','employees','schedule','clock-approvals','reports'].map(id=>{const item=list.find(x=>x[0]===id);return id==='clock-approvals'?[id,item?.[1],'คำขอ']:item}).filter(Boolean);
- const desktop=state.role==='hr'&&!state.personal?hrMenu:list.length>5?[list.find(x=>x[0]==='dashboard'),list.find(x=>x[0]==='employees'),list.find(x=>x[0]==='schedule'),list.find(x=>x[0]==='clock-approvals'),list.find(x=>x[0]==='reports'),['more','•••','จัดการ']]:list;
- $('#desktopNav').innerHTML=render(desktop);
- $('#bottomNav').innerHTML=render(state.role==='hr'&&!state.personal?hrMenu:list.length>5?[list.find(x=>x[0]==='dashboard'),list.find(x=>x[0]==='employees'),list.find(x=>x[0]==='schedule'),list.find(x=>x[0]==='reports'),['more','•••','จัดการ']]:list);
+ const list=activeMenu();const render=items=>items.map(([id,icon,label])=>`<button class="nav-item ${state.page===id?'active':''}" aria-current="${state.page===id?'page':'false'}" data-page="${id}"><span class="nav-symbol">${uiIcon(id)}${requestBadge(id)}</span><span>${label}</span></button>`).join('');
+ const managementMenu=['dashboard','employees','schedule','clock-approvals','leave','reports'].map(id=>list.find(x=>x[0]===id)).filter(Boolean);
+ const visible=state.personal||state.role==='employee'?list:state.role==='admin'?[...managementMenu,['more','•••','จัดการ']]:managementMenu;
+ $('#desktopNav').innerHTML=render(visible);
+ $('#bottomNav').innerHTML=render(visible);
+ $('#bottomNav').classList.toggle('management-bottom',!state.personal&&state.role!=='employee');
  $('#workspaceSwitch').hidden=state.role==='employee';
  const actualAdmin=state.boot?.isAdmin&&String(state.boot.adminRole).toUpperCase()!=='HR';
  $('#workspaceSwitch').innerHTML=`${actualAdmin?`<button data-workspace="admin" class="${state.role==='admin'&&!state.personal?'active':''}">Admin</button>`:''}<button data-workspace="hr" class="${state.role==='hr'&&!state.personal?'active':''}" ${state.role==='employee'?'hidden':''}>${actualAdmin?'ดูแบบ HR':'งาน HR'}</button><button data-hr-view="personal" class="${state.personal?'active':''}">ของฉัน</button>`;
@@ -172,21 +173,46 @@ async function attendanceView(){const d=await directory();return `${dayPicker()}
 async function render(){
  navigation();if(!state.connected)return;
  const version=++renderVersion;$('#content').innerHTML=panel('กำลังโหลดข้อมูล…');
- const views={clock:clockView,dashboard:dashboardView,employees:employeesView,schedule:scheduleView,calendar:calendarView,reports:reportView,line:lineView,'my-leave':leaveView,'clock-request':correctionView,more:managementView,attendance:attendanceView,offices:async()=>{const d=await directory();return panel(table(['รหัส','สำนักงาน'],d.offices.map(o=>[o.office_code,o.name])))},leave:leaveManagementView,'clock-approvals':requestsView};
+ const views={clock:clockView,dashboard:dashboardView,employees:employeesView,schedule:scheduleView,calendar:calendarView,reports:reportView,line:lineView,'my-leave':leaveView,'clock-request':correctionView,more:managementView,attendance:attendanceView,offices:async()=>{const d=await directory();return panel(table(['รหัส','สำนักงาน'],d.offices.map(o=>[o.office_code,o.name])))},leave:()=>requestsView('leave'),'clock-approvals':()=>requestsView('correction')};
  try{const html=await (views[state.page]||unavailableView)();if(version===renderVersion){$('#content').innerHTML=html+(html.includes(' disabled')?'<p class="availability-note">ปุ่มสีเทายังไม่เปิดการบันทึกใน Staging · ใช้งานผ่านระบบเดิมได้ตามปกติ</p>':'');tick()}}
  catch(e){if(version===renderVersion)$('#content').innerHTML=panel(`<h2>โหลดข้อมูลไม่สำเร็จ</h2><p>${esc(errorMessage(e))}</p><button class="btn primary" data-action="retry">ลองใหม่</button>`)}
 }
 function tick(){document.querySelectorAll('[data-clock]').forEach(el=>el.textContent=new Intl.DateTimeFormat('th-TH',{timeZone:'Asia/Bangkok',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).format(now()));document.querySelectorAll('[data-clock-date]').forEach(el=>el.textContent=displayDate(dateKey()))}
 function toast(text){$('#toast').textContent=text;$('#toast').classList.add('show');clearTimeout(toast.timer);toast.timer=setTimeout(()=>$('#toast').classList.remove('show'),4000)}
 
-async function requestQueue(){try{return await api('admin_request_queue')}catch(error){return {rows:[],warnings:[['STAGING_READ_ONLY','UNKNOWN_ACTION'].includes(error.message)?'รายการคำขอยังรอเปิดบริการอ่านข้อมูล': 'โหลดคำขอไม่สำเร็จ: '+errorMessage(error)]}}}
+
+const requestCache=new Map(),readMemory=new Map();
+function requestScope(){return state.boot?.profile?.userId ? 'kitty-request-read:'+state.boot.profile.userId+':'+state.role : null}
+function readRequestIds(){const key=requestScope();if(!key)return new Set();const memory=readMemory.get(key)||[];try{const stored=JSON.parse(localStorage.getItem(key)||'[]');return new Set([...memory,...(Array.isArray(stored)?stored:[])])}catch{return new Set(memory)}}
+function requestKey(r){return r.kind+':'+r.id}
+function unreadRequests(kind){if(state.personal||!['hr','admin'].includes(state.role))return [];const ids=readRequestIds();return (requestCache.get(requestScope())?.rows||[]).filter(r=>r.id&&r.kind===kind&&!ids.has(requestKey(r)))}
+function requestBadge(page){const kind=page==='leave'?'leave':page==='clock-approvals'?'correction':null;return kind&&unreadRequests(kind).length?'<span class="unread-dot" role="img" aria-label="มีคำขอยังไม่ได้อ่าน"></span>':''}
+async function requestQueue(){
+ const scope=requestScope();
+ try{const data=await api('admin_request_queue');if(scope&&scope===requestScope()){requestCache.set(scope,data);navigation()}return data}
+ catch(error){return {rows:[],warnings:[['STAGING_READ_ONLY','UNKNOWN_ACTION'].includes(error.message)?'รายการคำขอยังรอเปิดบริการอ่านข้อมูล':'โหลดคำขอไม่สำเร็จ: '+errorMessage(error)]}}
+}
+async function refreshRequestNotifications(){if(!state.connected||state.personal||!['admin','hr'].includes(state.role)||document.hidden||refreshRequestNotifications.busy)return;refreshRequestNotifications.busy=true;try{await requestQueue()}finally{refreshRequestNotifications.busy=false}}
+function openRequest(key){
+ const r=(requestCache.get(requestScope())?.rows||[]).find(r=>requestKey(r)===key);
+ if(!r||state.personal||!['admin','hr'].includes(state.role))return;
+ $('#actionTitle').textContent=r.kind==='leave'?'คำขอลา':'คำขอลงเวลา';
+ $('#actionBody').innerHTML=`<h2>${esc(person(r.employee))}</h2><p>วันที่ ${esc(r.leave_date||r.work_date||'—')}</p><p>${esc(r.duration||r.requested_event_type||'')}</p>${r.requested_event_at?`<p>เวลาที่ขอ ${time(r.requested_event_at)}</p>`:''}<p>${esc(r.reason||'ไม่ระบุเหตุผล')}</p><p>รออนุมัติ · อ่านอย่างเดียว</p>`;
+ $('#actionDialog').showModal();
+ const ids=readRequestIds();ids.add(key);readMemory.set(requestScope(),[...ids]);try{localStorage.setItem(requestScope(),JSON.stringify([...ids]))}catch{}
+ navigation();
+ document.querySelectorAll('[data-request-key]').forEach(button=>{if(button.dataset.requestKey===key){button.classList.remove('request-unread');button.querySelector('.request-read-label').textContent='อ่านแล้ว'}});
+}
 function requestList(data,limit=200){
  const rows=data.rows||[],warnings=data.warnings||[];
  return warnings.map(w=>`<p class="report-warning">${esc(w)}</p>`).join('')+
- (rows.length?rows.slice(0,limit).map(r=>`<article class="request-item"><div><strong>${esc(person(r.employee))}</strong><span class="attendance-tag">รออนุมัติ</span></div><p>${r.kind==='leave'?'ขอลา':'ขอแก้เวลา'} · ${esc(r.leave_date||r.work_date||'—')}</p><p>${esc(r.reason||'ไม่ระบุเหตุผล')}</p><small>ส่ง ${r.created_at?esc(displayDate(dateKey(new Date(r.created_at)))+' '+time(r.created_at)):'—'}</small></article>`).join(''):warnings.length?'':empty('ไม่มีคำขอรออนุมัติ'))+
+ (rows.length?rows.slice(0,limit).map(r=>`<article class="request-item"><div><strong>${esc(person(r.employee))}</strong><span class="attendance-tag">รออนุมัติ</span></div><p>${r.kind==='leave'?'ขอลา':'ขอแก้เวลา'} · ${esc(r.leave_date||r.work_date||'—')}</p><p>${esc(r.reason||'ไม่ระบุเหตุผล')}</p><small>ส่ง ${r.created_at?esc(displayDate(dateKey(new Date(r.created_at)))+' '+time(r.created_at)):'—'}</small>${r.id?`<button class="btn secondary ${readRequestIds().has(requestKey(r))?'':'request-unread'}" data-request-key="${esc(requestKey(r))}"><span class="request-read-label">${readRequestIds().has(requestKey(r))?'อ่านแล้ว':'เปิดอ่านคำขอ'}</span></button>`:''}</article>`).join(''):warnings.length?'':empty('ไม่มีคำขอรออนุมัติ'))+
  (rows.length>limit?`<p class="panel-sub">แสดง ${limit} จาก ${rows.length} รายการที่โหลด</p>`:'');
 }
-async function requestsView(){const data=await requestQueue();return panel(`<div class="section-heading"><h2>คำขอลา / ขอแก้เวลา</h2><button class="btn secondary" data-action="retry">โหลดใหม่</button></div>${requestList(data)}<p class="panel-sub">รายการรออนุมัติล่าสุด ไม่เกินประเภทละ 100 รายการ · อ่านอย่างเดียว</p><button class="btn secondary" data-page="leave">ดูการลาที่บันทึกแล้ว</button>`)}
+async function requestsView(kind){
+ const data=await requestQueue(),filtered={...data,rows:(data.rows||[]).filter(r=>r.kind===kind)};
+ return panel(`<div class="section-heading"><h2>${kind==='leave'?'คำขอลา':'คำขอลงเวลา'}</h2><button class="btn secondary" data-action="retry">โหลดใหม่</button></div>${requestList(filtered)}<p class="panel-sub">ล่าสุดไม่เกิน 100 รายการ · อ่านอย่างเดียว</p>`)+(kind==='leave'?`<details class="panel"><summary>การลาที่บันทึกแล้ว</summary>${await leaveManagementView()}</details>`:'');
+}
 function profileFields(data){
  const e=data.employee,offKeys=['weekly_dayoff','weekly_dayoffs','weekly_days_off','weekly_off_days','day_off'];
  const value=offKeys.find(k=>e[k]!==undefined&&e[k]!==null);
@@ -204,6 +230,7 @@ async function showEmployee(id){
 }
 document.addEventListener('click',e=>{
  const b=e.target.closest('button');if(!b||b.disabled)return;
+ if(b.dataset.requestKey){openRequest(b.dataset.requestKey);return}
  if(b.dataset.action==='individual-excel'){downloadIndividualReport(b);return}
  if(b.dataset.reportPeriod){if(!['admin','hr'].includes(state.role)||state.personal)return;state.reportPeriod=b.dataset.reportPeriod;render();return}
  if(b.dataset.dashboardDay){state.date=b.dataset.dashboardDay;state.selected=state.date;state.month=state.date.slice(0,7);render();return}
@@ -234,5 +261,6 @@ document.addEventListener('submit',e=>{
 });
 $('#closeActionDialog').onclick=$('#cancelActionDialog').onclick=()=>$('#actionDialog').close();
 setInterval(tick,1000);
-document.addEventListener('visibilitychange',()=>{if(!document.hidden)tick()});
+setInterval(refreshRequestNotifications,60000);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden){tick();refreshRequestNotifications()}});
 navigation();init();

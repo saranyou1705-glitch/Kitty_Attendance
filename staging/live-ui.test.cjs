@@ -33,7 +33,7 @@ test('table closes its scroll container before subsequent page controls',()=>{
 });
 test('Admin menus retain desktop and mobile access to all management features',()=>{
  const {run,node}=setup();run("state.role='admin';state.boot={isAdmin:true,adminRole:'ADMIN'};navigation()");
- const desktop=node('#desktopNav').innerHTML;assert(desktop.includes('จัดการ'));assert.equal((desktop.match(/data-page=/g)||[]).length,6);for(const name of ['LINE Report','Audit Log','แก้ไขเวลา','ตั้งค่าระบบ'])assert(run('managementView()').includes(name));assert(node('#bottomNav').innerHTML.includes('จัดการ'));
+ const desktop=node('#desktopNav').innerHTML;assert(desktop.includes('จัดการ'));assert.equal((desktop.match(/data-page=/g)||[]).length,7);for(const name of ['LINE Report','Audit Log','แก้ไขเวลา','ตั้งค่าระบบ'])assert(run('managementView()').includes(name));assert(node('#bottomNav').innerHTML.includes('จัดการ'));
 });
 test('report defaults to active employees and all-status never widens HR exclusions',()=>{
  const {run}=setup();run("var candidates=[{id:'on',active:true,name:'Office'},{id:'off',active:false,name:'Former'},{id:'private',active:true,name:'Shane'},{id:'unknown',name:'Unknown'}]");
@@ -88,9 +88,9 @@ test('schedule joins real attendance and preserves HR server scope',async()=>{
 test('icons use fixed viewBox vectors instead of platform-dependent glyphs',()=>{
  const {run,node}=setup();run("navigation()");assert(node('#bottomNav').innerHTML.includes('<svg'));assert(!node('#bottomNav').innerHTML.includes('◷'));assert(run("disabled('ออกพัก')").includes('<svg'));
 });
-test('HR has five direct tabs with requests and no management tab',()=>{
+test('HR has six direct tabs with separate request types and no management tab',()=>{
  const {run,node}=setup();run("state.role='hr';state.boot={isAdmin:true,adminRole:'HR'};navigation()");
- for(const selector of ['#desktopNav','#bottomNav']){const html=node(selector).innerHTML;assert(!html.includes('data-page="more"'));assert(html.includes('data-page="clock-approvals"'));assert.equal((html.match(/data-page=/g)||[]).length,5)}
+ for(const selector of ['#desktopNav','#bottomNav']){const html=node(selector).innerHTML;assert(!html.includes('data-page="more"'));assert(html.includes('data-page="clock-approvals"'));assert(html.includes('data-page="leave"'));assert.equal((html.match(/data-page=/g)||[]).length,6)}
 });
 test('employee info uses distinct profile action and escapes LINE and dayoff data',()=>{
  const {run}=setup();assert(run("employeeRows([{id:'ho'}])").includes('data-profile="ho"'));assert(!run("employeeRows([{id:'ho'}])").includes('data-employee='));
@@ -101,4 +101,26 @@ test('employee info uses distinct profile action and escapes LINE and dayoff dat
 test('request card distinguishes unavailable source from empty queue and escapes reasons',()=>{
  const {run}=setup();const missing=run("requestList({rows:[],warnings:['ยังไม่เชื่อม']})");assert(!missing.includes('ไม่มีคำขอรออนุมัติ'));
  assert(run("requestList({rows:[{kind:'leave',reason:'<script>',employee:{name:'Office'}}]})").includes('&lt;script&gt;'));
+});
+test('unread dots are per type, disappear only for opened records and stay account scoped',()=>{
+ const {run,node}=setup();run("state.role='hr';state.boot={profile:{userId:'one'}};requestCache.set(requestScope(),{rows:[{id:'l1',kind:'leave'},{id:'l2',kind:'leave'},{id:'c1',kind:'correction'}]});navigation()");
+ assert(run("requestBadge('leave')").includes('unread-dot'));assert(run("requestBadge('clock-approvals')").includes('unread-dot'));
+ run("state.page='leave';navigation()");assert.equal(run("unreadRequests('leave').length"),2);
+ run("openRequest('leave:l1')");assert.equal(run("unreadRequests('leave').length"),1);assert(node('#actionTitle').textContent.includes('ลา'));
+ run("openRequest('leave:l2')");assert.equal(run("requestBadge('leave')"),'');assert(run("requestBadge('clock-approvals')").includes('unread-dot'));
+ run("requestCache.get(requestScope()).rows.push({id:'l3',kind:'leave'})");assert.equal(run("unreadRequests('leave').length"),1);
+ run("state.boot={profile:{userId:'two'}}");assert.equal(run("requestBadge('leave')"),'');assert.equal(run("readRequestIds().size"),0);
+ run("state.boot={profile:{userId:'one'}};state.personal=true");assert.equal(run("requestBadge('leave')"),'');
+});
+test('request views filter correction and leave independently',async()=>{
+ const {run}=setup(async url=>({ok:true,json:async()=>({ok:true,rows:new URL(url).searchParams.get('action')==='admin_request_queue'?[{id:'l',kind:'leave',reason:'LEAVE-ONLY'},{id:'c',kind:'correction',reason:'CLOCK-ONLY'}]:[]})}));
+ run("state.role='hr';state.boot={profile:{userId:'one'}}");
+ const correction=await run("requestsView('correction')"),leave=await run("requestsView('leave')");
+ assert(correction.includes('CLOCK-ONLY'));assert(!correction.includes('LEAVE-ONLY'));assert(leave.includes('LEAVE-ONLY'));assert(!leave.includes('CLOCK-ONLY'));
+});
+test('read markers survive memory reload via browser storage and tolerate storage write failure',()=>{
+ const {run}=setup();run("var localStorage=sessionStorage;state.role='hr';state.boot={profile:{userId:'one'}};requestCache.set(requestScope(),{rows:[{kind:'leave',id:'1'}]});openRequest('leave:1');readMemory.clear()");
+ assert.equal(run("unreadRequests('leave').length"),0);
+ run("localStorage={getItem:()=>null,setItem:()=>{throw Error('storage full')}};openRequest('leave:1')");
+ assert.equal(run("unreadRequests('leave').length"),0);
 });
