@@ -45,6 +45,11 @@ test('all employees report combines permitted active records and aborts on a fai
  const html=await run('individualReportView()');assert(html.includes('2 คน'));assert.deepEqual(calls,['a','b']);assert.equal(run('state.individualReport.rows.length'),2);assert.equal(run('state.individualReport.combined'),true);
  fail=true;await assert.rejects(run('individualReportView()'),/offline/);assert.equal(run('state.individualReport'),null);
 });
+test('pink dashboard uses actual counts and preserves role-scoped management actions',async()=>{
+ const {run}=setup(async()=>({ok:true,json:async()=>({ok:true,summary:{checked_in:7,checked_out:3,not_checked_in:2,leave:1},rows:[]})}));
+ run("state.role='admin'");const admin=await run('dashboardView()');assert(admin.includes('<strong>7</strong>'));assert(admin.includes('LINE Report'));assert(admin.includes('dashboard-layout'));assert(!admin.includes('ทุกวันทำงาน'));assert(!admin.includes('ครบทุกคน'));
+ run("state.role='hr'");const hr=await run('dashboardView()');assert(hr.includes('Head Office'));assert(!hr.includes('LINE Report'));assert(hr.includes('data-page="clock-approvals"'));
+});
 test('employee cannot navigate into admin pages through fabricated button',()=>{
  const {run,listeners}=setup();listeners.click({target:{closest:()=>({dataset:{page:'audit'}})}});assert.equal(run('state.page'),'clock');
 });

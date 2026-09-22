@@ -1,5 +1,12 @@
 # Shared UI pass
 
+Approved pink concept applied (live9): rounded white cards, pink selected controls,
+soft blue-grey data surfaces and teal report shortcut. Desktop uses wrapping top
+navigation with every Admin entry retained; phone uses bottom navigation and
+Management for additional entries. Dashboard uses the existing real admin_daily
+response, not prototype metrics. No new authentication or write actions enabled.
+Live browser/device visual verification remains pending tool access.
+
 Presentation changes only. Production, API authentication and business rules are unchanged.
 
 - Neutral background, white surfaces, one navy primary color; semantic warning colors retained.
