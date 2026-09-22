@@ -72,7 +72,7 @@ p{margin:0 0 16px}.panel-sub,small{color:var(--muted)}.panel-sub{font-size:14px;
 
 /* Approved pink concept: compact top navigation and soft, rounded work surfaces. */
 .app-shell{display:block;max-width:1520px;margin:56px auto 24px;padding:0;border:1px solid var(--line);border-radius:30px;background:var(--card)}
-.sidebar{position:static;display:flex;width:auto;max-width:none;padding:24px 28px 18px;border:0;border-bottom:1px solid var(--line);background:transparent}
+.sidebar{position:static;transform:none;transition:none;display:flex;width:auto;max-width:none;padding:24px 28px 18px;border:0;border-bottom:1px solid var(--line);background:transparent}
 .brand{padding:0 0 20px}.brand-mark{border-radius:14px}.brand small{letter-spacing:.02em}
 .sidebar nav{display:flex;flex-wrap:wrap;gap:6px;overflow:visible}
 .sidebar .nav-item{border-radius:28px;background:var(--bg);padding:10px 15px;min-height:44px;gap:8px}
