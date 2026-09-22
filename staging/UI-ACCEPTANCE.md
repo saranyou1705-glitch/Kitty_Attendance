@@ -1,5 +1,15 @@
 # Shared UI pass
 
+Live10 structural correction: role switch moved into brand header, six desktop
+navigation destinations with all additional Admin entries under Management.
+Personal attendance now has separate clock/actions and daily-time summary cards,
+with complete event history retained. Dashboard now uses clickable employee rows,
+report and selectable week cards, plus an explicit unavailable-request panel.
+Real checked-out count is retained instead of fabricating a pending-request count.
+All four clock actions remain disabled while the API is read-only.
+Live browser access was denied again by security review; no device screenshot QA
+is claimed. Regression tests verify layout sections, real fields and menu reachability.
+
 Approved pink concept applied (live9): rounded white cards, pink selected controls,
 soft blue-grey data surfaces and teal report shortcut. Desktop uses wrapping top
 navigation with every Admin entry retained; phone uses bottom navigation and

@@ -33,7 +33,7 @@ test('table closes its scroll container before subsequent page controls',()=>{
 });
 test('Admin menus retain desktop and mobile access to all management features',()=>{
  const {run,node}=setup();run("state.role='admin';state.boot={isAdmin:true,adminRole:'ADMIN'};navigation()");
- const desktop=node('#desktopNav').innerHTML;for(const name of ['LINE Report','Audit Log','แก้ไขเวลา','ตั้งค่าระบบ'])assert(desktop.includes(name));assert(node('#bottomNav').innerHTML.includes('จัดการ'));assert(run('managementView()').includes('LINE Report'));
+ const desktop=node('#desktopNav').innerHTML;assert(desktop.includes('จัดการ'));assert.equal((desktop.match(/data-page=/g)||[]).length,6);for(const name of ['LINE Report','Audit Log','แก้ไขเวลา','ตั้งค่าระบบ'])assert(run('managementView()').includes(name));assert(node('#bottomNav').innerHTML.includes('จัดการ'));
 });
 test('report defaults to active employees and all-status never widens HR exclusions',()=>{
  const {run}=setup();run("var candidates=[{id:'on',active:true,name:'Office'},{id:'off',active:false,name:'Former'},{id:'private',active:true,name:'Shane'},{id:'unknown',name:'Unknown'}]");
@@ -49,6 +49,12 @@ test('pink dashboard uses actual counts and preserves role-scoped management act
  const {run}=setup(async()=>({ok:true,json:async()=>({ok:true,summary:{checked_in:7,checked_out:3,not_checked_in:2,leave:1},rows:[]})}));
  run("state.role='admin'");const admin=await run('dashboardView()');assert(admin.includes('<strong>7</strong>'));assert(admin.includes('LINE Report'));assert(admin.includes('dashboard-layout'));assert(!admin.includes('ทุกวันทำงาน'));assert(!admin.includes('ครบทุกคน'));
  run("state.role='hr'");const hr=await run('dashboardView()');assert(hr.includes('Head Office'));assert(!hr.includes('LINE Report'));assert(hr.includes('data-page="clock-approvals"'));
+});
+test('personal clock matches split-card structure and uses real work duration',async()=>{
+ const {run}=setup(async()=>({ok:true,json:async()=>({ok:true,events:[{event_type:'BREAK_OUT',event_at:'2026-09-22T05:00:00Z'}],daily:{first_in_at:'2026-09-22T02:00:00Z',break_out_at:'2026-09-22T05:00:00Z',paid_work_hours:3.25}})}));run("state.boot={employee:{id:'self',name:'Real employee'}}");const html=await run('clockView()');assert(html.includes('personal-clock-layout'));assert(html.includes('panel clock-card'));assert(html.includes('panel clock-summary'));assert(html.includes('3 ชม. 15 นาที'));assert(html.includes('กำลังพัก'));assert(html.includes('ประวัติการลงเวลาทั้งหมด'));
+});
+test('attendance list keeps employee IDs, escapes names and has no fabricated people',()=>{
+ const {run}=setup();const html=run("attendancePeople([{employee_id:'id1',employee:{name:'<script>',employee_code:'HO001'},first_in_at:'2026-09-22T02:00:00Z'}])");assert(html.includes('data-employee="id1"'));assert(html.includes('&lt;script&gt;'));assert(html.includes('09:00'));assert(!html.includes('พนักงานตัวอย่าง'));
 });
 test('employee cannot navigate into admin pages through fabricated button',()=>{
  const {run,listeners}=setup();listeners.click({target:{closest:()=>({dataset:{page:'audit'}})}});assert.equal(run('state.page'),'clock');

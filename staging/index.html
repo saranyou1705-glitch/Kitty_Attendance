@@ -6,23 +6,20 @@
   <meta name="robots" content="noindex,nofollow" />
   <title>Kitty Attendance — Staging</title>
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
-  <link rel="stylesheet" href="styles.css?v=20260922-live9" />
-  <link rel="stylesheet" href="design-system.css?v=20260922-live9" />
+  <link rel="stylesheet" href="styles.css?v=20260922-live10" />
+  <link rel="stylesheet" href="design-system.css?v=20260922-live10" />
 </head>
 <body>
   <div class="preview-ribbon" id="environmentStatus">STAGING · กำลังเชื่อมต่อข้อมูลจริงแบบอ่านอย่างเดียว</div>
   <div class="app-shell">
     <aside class="sidebar">
-      <div class="brand"><span class="brand-mark">K</span><div><strong>Kitty Attendance</strong><small id="consoleName">Admin Console</small></div></div>
+      <div class="app-chrome"><div class="brand"><span class="brand-mark" aria-hidden="true">✿</span><div><strong>Kitty Attendance</strong><small id="consoleName">Admin Console</small></div></div><div class="workspace-switch" id="workspaceSwitch" hidden></div></div>
       <nav id="desktopNav" aria-label="เมนูหลัก"></nav>
     </aside>
 
     <main>
-      <header class="topbar">
+      <header class="topbar" id="pageHeader">
         <div><h1 id="pageTitle">ภาพรวมวันนี้</h1></div>
-        <div class="top-actions">
-          <div class="workspace-switch" id="workspaceSwitch" hidden><button class="active" data-hr-view="work">งาน HR</button><button data-hr-view="personal">ของฉัน</button></div>
-        </div>
       </header>
 
       <section class="content" id="content" aria-live="polite"></section>
@@ -51,7 +48,7 @@
   </dialog>
   <div class="toast" id="toast" role="status"></div>
   <script src="vendor/exceljs-4.4.0.min.js"></script>
-  <script src="individual-report.js?v=20260922-live9"></script>
-  <script src="app.js?v=20260922-live9"></script>
+  <script src="individual-report.js?v=20260922-live10"></script>
+  <script src="app.js?v=20260922-live10"></script>
 </body>
 </html>
