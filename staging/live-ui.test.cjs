@@ -24,9 +24,26 @@ test('half-day drafts require 240 net minutes and are isolated per employee',()=
  const {run}=setup();run("state.boot={employee:{id:'first'}}");assert(run('leaveView()').includes('HALF_DAY_AM'));assert(run('leaveView()').includes('HALF_DAY_PM'));run("sessionStorage.setItem(draftKey(),JSON.stringify([{kind:'leave',date:'2026-09-18',label:'PRIVATE DRAFT'}]))");assert(run("draftHistory('leave')").includes('PRIVATE DRAFT'));run("state.boot={employee:{id:'second'}}");assert(!run("draftHistory('leave')").includes('PRIVATE DRAFT'));assert(source.includes("requiredNetMinutes:leave&&data.duration!=='FULL_DAY'?240:0"));
 });
 test('individual report selector preserves HR scope and loads selected employee/month',async()=>{
- const calls=[];const {run}=setup(async(url,options)=>{const action=new URL(url).searchParams.get('action');const body=JSON.parse(options.body);calls.push({action,body});return {ok:true,json:async()=>action==='admin_bootstrap'?{ok:true,employees:[{id:'ho',employee_code:'HO002',name:'Office'},{id:'shane',employee_code:'HO001',name:'Shane'},{id:'peet',employee_code:'HO003',name:'Peet'}],offices:[]}:{ok:true,employee:{id:'ho',employee_code:'HO002',name:'Office'},month:'2026-09',warnings:['ยังไม่เชื่อมประวัติคำขอลา'],rows:[{work_date:'2026-09-01',paid_work_hours:8}]}}});
+ const calls=[];const {run}=setup(async(url,options)=>{const action=new URL(url).searchParams.get('action');const body=JSON.parse(options.body);calls.push({action,body});return {ok:true,json:async()=>action==='admin_bootstrap'?{ok:true,employees:[{id:'ho',employee_code:'HO002',name:'Office',active:true},{id:'shane',employee_code:'HO001',name:'Shane'},{id:'peet',employee_code:'HO003',name:'Peet'}],offices:[]}:{ok:true,employee:{id:'ho',employee_code:'HO002',name:'Office',active:true},month:'2026-09',warnings:['ยังไม่เชื่อมประวัติคำขอลา'],rows:[{work_date:'2026-09-01',paid_work_hours:8}]}}});
  run("state.role='hr';state.page='reports';state.month='2026-09';state.reportPeriod='individual';state.reportEmployee='ho'");
  const html=await run('reportView()');assert(html.includes('ดาวน์โหลด Excel'));assert(html.includes('8 ชม. 0 นาที'));assert(html.includes('ยังไม่เชื่อม'));assert(!html.includes('value="shane"'));assert(!html.includes('value="peet"'));assert.equal(run('state.individualReport.employee.id'),'ho');assert.deepEqual(calls[1],{action:'admin_individual_report',body:{employeeId:'ho',month:'2026-09',previewRole:'HR'}});
+});
+test('table closes its scroll container before subsequent page controls',()=>{
+ const {run}=setup();const html=run("table(['Date'],[['2026-09-22']])");assert(html.endsWith('</table></div>'));assert.equal(html.split('<div').length,html.split('</div>').length);
+});
+test('Admin menus retain desktop and mobile access to all management features',()=>{
+ const {run,node}=setup();run("state.role='admin';state.boot={isAdmin:true,adminRole:'ADMIN'};navigation()");
+ const desktop=node('#desktopNav').innerHTML;for(const name of ['LINE Report','Audit Log','แก้ไขเวลา','ตั้งค่าระบบ'])assert(desktop.includes(name));assert(node('#bottomNav').innerHTML.includes('จัดการ'));assert(run('managementView()').includes('LINE Report'));
+});
+test('report defaults to active employees and all-status never widens HR exclusions',()=>{
+ const {run}=setup();run("var candidates=[{id:'on',active:true,name:'Office'},{id:'off',active:false,name:'Former'},{id:'private',active:true,name:'Shane'},{id:'unknown',name:'Unknown'}]");
+ assert.equal(run("reportEmployees(candidates,'admin').map(e=>e.id).join(',')"),'on,private');assert.equal(run("reportEmployees(candidates,'hr','all').map(e=>e.id).join(',')"),'on,off,unknown');
+});
+test('all employees report combines permitted active records and aborts on a failed employee',async()=>{
+ let fail=false;const calls=[];const {run}=setup(async(url,options)=>{const body=JSON.parse(options.body);calls.push(body.employeeId);if(fail&&body.employeeId==='b')throw Error('offline');return {ok:true,json:async()=>({ok:true,employee:{id:body.employeeId,active:true,name:body.employeeId},month:'2026-09',warnings:[],rows:[{work_date:'2026-09-01'}],generated_at:'2026-09-22T00:00:00Z'})}});
+ run("state.role='admin';state.page='reports';state.month='2026-09';state.reportEmployee='ALL';state.directory={employees:[{id:'a',active:true},{id:'b',active:true},{id:'old',active:false}]} ");
+ const html=await run('individualReportView()');assert(html.includes('2 คน'));assert.deepEqual(calls,['a','b']);assert.equal(run('state.individualReport.rows.length'),2);assert.equal(run('state.individualReport.combined'),true);
+ fail=true;await assert.rejects(run('individualReportView()'),/offline/);assert.equal(run('state.individualReport'),null);
 });
 test('employee cannot navigate into admin pages through fabricated button',()=>{
  const {run,listeners}=setup();listeners.click({target:{closest:()=>({dataset:{page:'audit'}})}});assert.equal(run('state.page'),'clock');

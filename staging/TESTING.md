@@ -2,6 +2,8 @@
 
 ## Individual Excel report (live7)
 
+Update live8: Active-only is the default. Choose ทุกสถานะ to explicitly include inactive staff, and พนักงานทั้งหมดในตัวกรอง to combine all permitted employees into ONE worksheet with employee code/name columns. Requests use the existing server-authorized individual endpoint in batches of three. Any failed response stops the export; changing role/month/filter invalidates the snapshot. Preview is capped at 100 rows, Excel is not capped. Verify all employee/date pairs, header shifts, numeric duration columns and sum formulas. Recheck HR exclusions for both filters. Shared UI stylesheet is included; recording/approval remain disabled rather than bypassing the read-only API.
+
 Reports → รายบุคคล / Excel → choose employee and month → ดาวน์โหลด Excel.
 One worksheet contains every calendar date, Bangkok clock times, net paid work,
 short/over/makeup duration, schedule notes, and submitted leave/correction records.
