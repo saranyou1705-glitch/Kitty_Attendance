@@ -46,3 +46,17 @@ test('Admin HR preview narrows results and cannot expose LINE actions',async()=>
 test('preview flag cannot elevate HR or employee access',async()=>{assert.equal((await request('admin_report_preview','HR',{previewRole:'ADMIN'})).status,403);assert.equal((await request('admin_bootstrap',null,{previewRole:'HR'})).status,403)});
 test('LINE preview does not attempt any DB writes',async()=>{const r=await request('admin_report_preview','ADMIN',{date:'2026-09-10',reportType:'END_DAY'});assert.equal(r.writes,0);assert.equal(r.status,200)});
 test('dashboard includes real scheduled employees without daily attendance rows',async()=>{const r=await request('admin_daily','HR',{date:'2026-09-10'},true);assert.equal(r.status,200);assert.equal(r.data.summary.not_checked_in,1);assert.equal(r.data.summary.checked_in,1);assert.equal(r.data.rows.find(e=>e.employee_id==='ho').first_in_at,null);assert.equal(r.writes,0)});
+test('employee profile is scoped and returns only approved personnel fields',async()=>{
+ const extras={tables:{employees:[{id:'ho',employee_code:'HO002',name:'N',attendance_mode:'STANDARD',line_user_id:'line-id',weekly_dayoffs:['MON'],secret:'never-return'}]}};
+ const r=await request('admin_employee_profile','HR',{employeeId:'ho'},false,extras);
+ assert.equal(r.status,200);assert.equal(r.data.employee.line_user_id,'line-id');assert.deepEqual(r.data.employee.weekly_dayoffs,['MON']);assert.equal(r.data.employee.secret,undefined);assert.equal(r.writes,0);
+ assert.equal((await request('admin_employee_profile','HR',{employeeId:'ba'})).status,403);
+ assert.equal((await request('admin_employee_profile',null,{employeeId:'ho'})).status,403);
+});
+test('pending queue excludes other roles and completed requests and remains read-only',async()=>{
+ const extras={tables:{leave_requests_v2:[{id:'h',employee_id:'ho',status:'PENDING',created_at:'2026-09-22'},{id:'b',employee_id:'ba',status:'PENDING'},{id:'a',employee_id:'ho',status:'APPROVED'}]}};
+ const r=await request('admin_request_queue','HR',{},false,extras);
+ assert.equal(r.status,200);assert.deepEqual(r.data.rows.map(r=>r.id),['h']);assert.equal(r.data.rows[0].employee.employee_code,'HO002');assert.equal(r.writes,0);
+ assert.equal((await request('admin_request_queue',null)).status,403);
+ const missing=await request('admin_request_queue','HR',{},false,{errors:{leave_requests_v2:{code:'42P01'}}});assert.equal(missing.data.warnings.length,1);
+});

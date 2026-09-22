@@ -70,8 +70,8 @@ test('entering schedule aligns calendar month and selected work date',()=>{
  const {run,listeners}=setup();run("state.role='admin';state.date='2026-09-21';state.month='2026-08';state.selected='2026-08-01'");listeners.click({target:{closest:()=>({dataset:{page:'schedule'}})}});assert.equal(run('state.month'),'2026-09');assert.equal(run('state.selected'),'2026-09-21');
 });
 test('older request cannot replace a newer page',async()=>{
- let release;const {run,node}=setup(async()=>{await new Promise(resolve=>release=resolve);return {ok:true,json:async()=>({ok:true,summary:{},rows:[]})}});
- run("state.connected=true;state.role='admin';state.page='dashboard'");const first=run('render()');run("state.page='settings'");await run('render()');release();await first;assert(node('#content').innerHTML.includes('ตั้งค่าระบบ'));assert(!node('#content').innerHTML.includes('เข้างานแล้ว'));
+ const releases=[];const {run,node}=setup(async()=>{await new Promise(resolve=>releases.push(resolve));return {ok:true,json:async()=>({ok:true,summary:{},rows:[]})}});
+ run("state.connected=true;state.role='admin';state.page='dashboard'");const first=run('render()');run("state.page='settings'");await run('render()');releases.forEach(release=>release());await first;assert(node('#content').innerHTML.includes('ตั้งค่าระบบ'));assert(!node('#content').innerHTML.includes('เข้างานแล้ว'));
 });
 test('daily report loads selected date and HR scope with break columns and print action',async()=>{const calls=[];const {run}=setup(async(url,options)=>{calls.push({action:new URL(url).searchParams.get('action'),body:JSON.parse(options.body)});return {ok:true,json:async()=>({ok:true,rows:[{employee:{name:'Actual employee'},paid_work_hours:8.5,break_out_at:'2026-09-20T05:00:00Z'}]})}});run("state.role='hr';state.date='2026-09-20'");const html=await run('reportView()');assert.equal(calls[0].action,'admin_daily');assert.equal(calls[0].body.date,'2026-09-20');assert.equal(calls[0].body.previewRole,'HR');assert(html.includes('8 ชม. 30 นาที'));assert(html.includes('ออกพัก'));assert(html.includes('data-action=\"print\"'));assert(!html.includes('data-page=\"dashboard\"'))});
 test('monthly report stays available as a separate tab',async()=>{let action;const {run}=setup(async(url)=>{action=new URL(url).searchParams.get('action');return {ok:true,json:async()=>({ok:true,rows:[],period_start:'2026-09-01'})}});run("state.reportPeriod='monthly'");const html=await run('reportView()');assert.equal(action,'admin_monthly_summary');assert(html.includes('data-report-period=\"daily\"'))});
@@ -87,4 +87,18 @@ test('schedule joins real attendance and preserves HR server scope',async()=>{
 });
 test('icons use fixed viewBox vectors instead of platform-dependent glyphs',()=>{
  const {run,node}=setup();run("navigation()");assert(node('#bottomNav').innerHTML.includes('<svg'));assert(!node('#bottomNav').innerHTML.includes('◷'));assert(run("disabled('ออกพัก')").includes('<svg'));
+});
+test('HR has five direct tabs with requests and no management tab',()=>{
+ const {run,node}=setup();run("state.role='hr';state.boot={isAdmin:true,adminRole:'HR'};navigation()");
+ for(const selector of ['#desktopNav','#bottomNav']){const html=node(selector).innerHTML;assert(!html.includes('data-page="more"'));assert(html.includes('data-page="clock-approvals"'));assert.equal((html.match(/data-page=/g)||[]).length,5)}
+});
+test('employee info uses distinct profile action and escapes LINE and dayoff data',()=>{
+ const {run}=setup();assert(run("employeeRows([{id:'ho'}])").includes('data-profile="ho"'));assert(!run("employeeRows([{id:'ho'}])").includes('data-employee='));
+ const html=run("profileFields({employee:{line_user_id:'<line>',weekly_dayoffs:['MON','TUE']}})");
+ assert(html.includes('&lt;line&gt;'));assert(html.includes('MON, TUE'));assert(!html.includes('การลงเวลา'));
+ assert(run('dayPicker()').includes('<span>วันที่</span>'));
+});
+test('request card distinguishes unavailable source from empty queue and escapes reasons',()=>{
+ const {run}=setup();const missing=run("requestList({rows:[],warnings:['ยังไม่เชื่อม']})");assert(!missing.includes('ไม่มีคำขอรออนุมัติ'));
+ assert(run("requestList({rows:[{kind:'leave',reason:'<script>',employee:{name:'Office'}}]})").includes('&lt;script&gt;'));
 });

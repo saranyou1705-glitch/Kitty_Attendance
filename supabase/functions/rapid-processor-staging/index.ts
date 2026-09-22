@@ -31,6 +31,8 @@ const STAGING_READ_ACTIONS = new Set([
   "admin_monthly_summary",
   "admin_report_preview",
   "staging_schedule",
+  "admin_employee_profile",
+  "admin_request_queue",
 ]);
 
 function json(data: unknown, status = 200) {
@@ -1228,7 +1230,7 @@ Deno.serve(async (req) => {
     const isHR = String(admin?.role || "").toUpperCase() === "HR" || (!!admin && body.previewRole === "HR");
     let hrEmployees: any[] = [];
     if (isHR) {
-      const allowedActions = new Set(["bootstrap", "today", "employee_month", "admin_bootstrap", "admin_daily", "admin_employee_day", "admin_monthly_summary", "admin_individual_report", "staging_schedule"]);
+      const allowedActions = new Set(["bootstrap", "today", "employee_month", "admin_bootstrap", "admin_daily", "admin_employee_day", "admin_monthly_summary", "admin_individual_report", "staging_schedule", "admin_employee_profile", "admin_request_queue"]);
       if (!allowedActions.has(action)) return json({ok:false,error:"ADMIN_REQUIRED"},403);
       const {data, error} = await supabase.from("employees").select("id,employee_code,name,attendance_mode");
       if (error) throw error;
@@ -1237,6 +1239,52 @@ Deno.serve(async (req) => {
     const hrIds = new Set(hrEmployees.map(e => e.id));
     const hrReportIds = new Set(hrEmployees.filter(e => !/\b(shane|peet)\b/i.test(e.name || "")).map(e => e.id));
     if (isHR && action === "admin_employee_day" && !hrIds.has(String(body.employeeId || ""))) return json({ok:false,error:"FORBIDDEN"},403);
+
+    if (action === "admin_employee_profile") {
+      if (!admin) return json({ok:false,error:"ADMIN_REQUIRED"},403);
+      const id=String(body.employeeId || "");
+      if (!id) return json({ok:false,error:"EMPLOYEE_REQUIRED"},400);
+      if (isHR && !hrIds.has(id)) return json({ok:false,error:"FORBIDDEN"},403);
+      const {data:record,error}=await supabase.from("employees").select("*").eq("id",id).maybeSingle();
+      if (error) throw error;
+      if (!record) return json({ok:false,error:"EMPLOYEE_NOT_FOUND"},404);
+      // Return only approved personnel fields, never arbitrary employee columns.
+      const profile:Record<string,unknown>={};
+      for (const key of ["id","employee_code","name","attendance_mode","active","line_user_id","default_office_id","office_id","weekly_dayoff","weekly_dayoffs","weekly_days_off","weekly_off_days","day_off","phone","email","position","department"]) {
+        if (Object.prototype.hasOwnProperty.call(record,key)) profile[key]=record[key];
+      }
+      const officeId=record.default_office_id || record.office_id;
+      let office=null;
+      if (officeId) {
+        const result=await supabase.from("offices").select("id,office_code,name").eq("id",officeId).maybeSingle();
+        if (result.error) throw result.error;
+        office=result.data;
+      }
+      return json({ok:true,employee:profile,office});
+    }
+    if (action === "admin_request_queue") {
+      if (!admin) return json({ok:false,error:"ADMIN_REQUIRED"},403);
+      const warnings:string[]=[];
+      async function pending(table:string,columns:string,kind:string) {
+        let query=supabase.from(table).select(columns).eq("status","PENDING");
+        if (isHR) query=query.in("employee_id",[...hrIds]);
+        const result=await query.order("created_at",{ascending:false}).limit(100);
+        if (result.error) {
+          if (["42P01","PGRST205"].includes(result.error.code)) {warnings.push(kind==="leave"?"ยังไม่เชื่อมข้อมูลคำขอลา":"ยังไม่เชื่อมข้อมูลคำขอแก้เวลา");return [];}
+          throw result.error;
+        }
+        return (result.data||[]).map(r=>({...r,kind}));
+      }
+      const [leave,correction]=await Promise.all([
+        pending("leave_requests_v2","id,employee_id,leave_date,duration,status,reason,created_at","leave"),
+        pending("attendance_correction_requests","id,employee_id,work_date,requested_event_type,requested_event_at,status,reason,created_at","correction"),
+      ]);
+      const rows=[...leave,...correction].sort((a,b)=>String(b.created_at).localeCompare(String(a.created_at)));
+      const ids=[...new Set(rows.map(r=>r.employee_id))];
+      let people:any[]=[];
+      if(ids.length){const result=await supabase.from("employees").select("id,employee_code,name").in("id",ids);if(result.error)throw result.error;people=result.data||[];}
+      return json({ok:true,rows:rows.map(r=>({...r,employee:people.find(p=>p.id===r.employee_id)||null})),warnings,limitPerType:100});
+    }
 
     if (action === "admin_individual_report") {
       if (!admin) return json({ok:false,error:"ADMIN_REQUIRED"},403);
