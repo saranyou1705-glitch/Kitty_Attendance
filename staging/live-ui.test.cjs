@@ -42,7 +42,7 @@ test('report defaults to active employees and all-status never widens HR exclusi
 test('all employees report combines permitted active records and aborts on a failed employee',async()=>{
  let fail=false;const calls=[];const {run}=setup(async(url,options)=>{const body=JSON.parse(options.body);calls.push(body.employeeId);if(fail&&body.employeeId==='b')throw Error('offline');return {ok:true,json:async()=>({ok:true,employee:{id:body.employeeId,active:true,name:body.employeeId},month:'2026-09',warnings:[],rows:[{work_date:'2026-09-01'}],generated_at:'2026-09-22T00:00:00Z'})}});
  run("state.role='admin';state.page='reports';state.month='2026-09';state.reportEmployee='ALL';state.directory={employees:[{id:'a',active:true},{id:'b',active:true},{id:'old',active:false}]} ");
- const html=await run('individualReportView()');assert(html.includes('2 คน'));assert.deepEqual(calls,['a','b']);assert.equal(run('state.individualReport.rows.length'),2);assert.equal(run('state.individualReport.combined'),true);
+ const html=await run('individualReportView()');assert(html.includes('2 คน'));assert.deepEqual(calls,['a','b','a','b']);assert.equal(run('state.individualReport.rows.length'),2);assert.equal(run('state.individualReport.combined'),true);
  fail=true;await assert.rejects(run('individualReportView()'),/offline/);assert.equal(run('state.individualReport'),null);
 });
 test('pink dashboard uses actual counts and preserves role-scoped management actions',async()=>{
@@ -113,7 +113,7 @@ test('unread dots are per type, disappear only for opened records and stay accou
  run("state.boot={profile:{userId:'one'}};state.personal=true");assert.equal(run("requestBadge('leave')"),'');
 });
 test('request views filter correction and leave independently',async()=>{
- const {run}=setup(async url=>({ok:true,json:async()=>({ok:true,rows:new URL(url).searchParams.get('action')==='admin_request_queue'?[{id:'l',kind:'leave',reason:'LEAVE-ONLY'},{id:'c',kind:'correction',reason:'CLOCK-ONLY'}]:[]})}));
+ const {run}=setup(async url=>({ok:true,json:async()=>({ok:true,rows:new URL(url).searchParams.get('action')==='staging_request_queue'?[{id:'l',kind:'leave',reason:'LEAVE-ONLY'},{id:'c',kind:'correction',reason:'CLOCK-ONLY'}]:[]})}));
  run("state.role='hr';state.boot={profile:{userId:'one'}}");
  const correction=await run("requestsView('correction')"),leave=await run("requestsView('leave')");
  assert(correction.includes('CLOCK-ONLY'));assert(!correction.includes('LEAVE-ONLY'));assert(leave.includes('LEAVE-ONLY'));assert(!leave.includes('CLOCK-ONLY'));
@@ -123,4 +123,17 @@ test('read markers survive memory reload via browser storage and tolerate storag
  assert.equal(run("unreadRequests('leave').length"),0);
  run("localStorage={getItem:()=>null,setItem:()=>{throw Error('storage full')}};openRequest('leave:1')");
  assert.equal(run("unreadRequests('leave').length"),0);
+});
+test('request forms allow explicit sandbox submission but preserve draft actions',()=>{
+ const {run}=setup();for(const view of ['leaveView()','correctionView()']){const html=run(view);assert(html.includes('data-send-request="true"'));assert(html.includes('บันทึกแบบร่างในเครื่อง'));assert(!html.includes('ยังส่งไม่ได้'))}
+});
+test('sandbox request notes merge without modifying production work totals',()=>{
+ const {run}=setup();const r=run("mergeSandboxReport({rows:[{work_date:'2026-09-22',paid_work_hours:8}],warnings:[]},{rows:[{kind:'correction',work_date:'2026-09-22',status:'APPROVED',approved_sequence_in_month:3,deduction_amount:200}]})");
+ assert.equal(r.rows[0].paid_work_hours,8);assert.equal(r.rows[0].requests[0].sandbox,true);assert.equal(r.rows[0].requests[0].effective_date,'2026-09-22');
+});
+test('sandbox send retries use same client ID and never accept a forged employee target',async()=>{
+ const calls=[];let fail=true;const {run}=setup(async(url,options)=>{calls.push({action:new URL(url).searchParams.get('action'),body:JSON.parse(options.body)});return {ok:!fail,json:async()=>fail?{ok:false,error:'REQUEST_SERVICE_ERROR'}:{ok:true,sandbox:true}}});
+ run("var testForm={id:'correctionForm',dataset:{}};var testButton={disabled:false};var testData={date:'2026-09-22',event:'เข้างาน',time:'09:00',reason:'test'}");
+ await run('sendRequest(testForm,testData,testButton)');fail=false;await run('sendRequest(testForm,testData,testButton)');
+ assert.equal(calls[0].action,'staging_request_submit');assert.equal(calls[0].body.clientId,calls[1].body.clientId);assert.equal(calls[0].body.event,'IN');assert.equal(calls[0].body.employeeId,undefined);assert.equal(run('testButton.disabled'),false);
 });

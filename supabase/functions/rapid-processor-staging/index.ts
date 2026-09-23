@@ -1,6 +1,6 @@
 
 // Supabase Edge Function: rapid-processor-staging
-// This is an isolated, read-only staging copy. Write actions are always blocked.
+// Production data stays read-only. Explicit request RPC actions write only kitty_staging.
 // Never deploy this file over rapid-processor.
 // Required secrets:
 // SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
@@ -16,6 +16,12 @@ const cors = {
   "X-Kitty-Environment": "staging",
 };
 
+// These actions call a single RPC whose only write targets are kitty_staging.
+const STAGING_REQUEST_ACTIONS:Record<string,string> = {
+  staging_request_submit:"submit", staging_request_review:"review",
+  staging_request_cancel:"cancel", staging_request_mine:"mine",
+  staging_request_queue:"queue", staging_request_report:"report",
+};
 const STAGING_READ_ACTIONS = new Set([
   "bootstrap",
   "registration_options",
@@ -1069,7 +1075,7 @@ Deno.serve(async (req) => {
     const action = url.searchParams.get("action") || "bootstrap";
     const body = req.method === "POST" ? await req.json().catch(() => ({})) : {};
 
-    if (!STAGING_READ_ACTIONS.has(action)) {
+    if (!STAGING_READ_ACTIONS.has(action) && !Object.prototype.hasOwnProperty.call(STAGING_REQUEST_ACTIONS,action)) {
       return json({
         ok: false,
         error: "STAGING_READ_ONLY",
@@ -1231,7 +1237,7 @@ Deno.serve(async (req) => {
     let hrEmployees: any[] = [];
     if (isHR) {
       const allowedActions = new Set(["bootstrap", "today", "employee_month", "admin_bootstrap", "admin_daily", "admin_employee_day", "admin_monthly_summary", "admin_individual_report", "staging_schedule", "admin_employee_profile", "admin_request_queue"]);
-      if (!allowedActions.has(action)) return json({ok:false,error:"ADMIN_REQUIRED"},403);
+      if (!allowedActions.has(action) && !Object.prototype.hasOwnProperty.call(STAGING_REQUEST_ACTIONS,action)) return json({ok:false,error:"ADMIN_REQUIRED"},403);
       const {data, error} = await supabase.from("employees").select("id,employee_code,name,attendance_mode");
       if (error) throw error;
       hrEmployees = (data || []).filter((e:any) => /^HO/i.test(e.employee_code || "") && !["MULTI_BRANCH", "DRIVER"].includes(String(e.attendance_mode).toUpperCase()));
@@ -1239,6 +1245,22 @@ Deno.serve(async (req) => {
     const hrIds = new Set(hrEmployees.map(e => e.id));
     const hrReportIds = new Set(hrEmployees.filter(e => !/\b(shane|peet)\b/i.test(e.name || "")).map(e => e.id));
     if (isHR && action === "admin_employee_day" && !hrIds.has(String(body.employeeId || ""))) return json({ok:false,error:"FORBIDDEN"},403);
+
+    if (Object.prototype.hasOwnProperty.call(STAGING_REQUEST_ACTIONS,action)) {
+      const operation=STAGING_REQUEST_ACTIONS[action];
+      if (["review","queue","report"].includes(operation) && !admin) return json({ok:false,error:"FORBIDDEN"},403);
+      if (["submit","cancel","mine"].includes(operation) && !employee) return json({ok:false,error:"EMPLOYEE_REQUIRED"},403);
+      const {data,error}=await supabase.rpc("kitty_staging_request_v1",{
+        actor:profile.userId,operation,payload:{...body,previewRole:isHR?"HR":undefined},
+      });
+      if(error) {
+        const known=["FORBIDDEN","UNAUTHENTICATED","AMBIGUOUS_IDENTITY","EMPLOYEE_REQUIRED","INVALID_REQUEST","INVALID_DATE","INVALID_LEAVE","INVALID_EVENT","FUTURE_EVENT","IDEMPOTENCY_CONFLICT","NOT_FOUND","INVALID_DECISION","REJECTION_REASON_REQUIRED","INVALID_REASON","ALREADY_REVIEWED","INVALID_REPORT"];
+        const message=known.includes(error.message)?error.message:error.code==="23505"?"DUPLICATE_PENDING_REQUEST":"REQUEST_SERVICE_ERROR";
+        const status=["FORBIDDEN","UNAUTHENTICATED","AMBIGUOUS_IDENTITY"].includes(message)?403:message==="NOT_FOUND"?404:["ALREADY_REVIEWED","DUPLICATE_PENDING_REQUEST","IDEMPOTENCY_CONFLICT"].includes(message)?409:message==="REQUEST_SERVICE_ERROR"?503:400;
+        return json({ok:false,error:message},status);
+      }
+      return json(data);
+    }
 
     if (action === "admin_employee_profile") {
       if (!admin) return json({ok:false,error:"ADMIN_REQUIRED"},403);
@@ -2539,6 +2561,7 @@ Deno.serve(async (req) => {
 
     return json({ ok:false,error:"UNKNOWN_ACTION" }, 404);
   } catch (e) {
+    if (["MISSING_LINE_TOKEN","INVALID_LINE_TOKEN"].includes(String(e?.message))) return json({ok:false,error:String(e.message)},401);
     console.error(e);
     return json({ ok:false,error:String(e?.message || e) }, 500);
   }

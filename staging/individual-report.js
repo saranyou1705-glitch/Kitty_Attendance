@@ -11,7 +11,7 @@
   for(const r of row.requests||[]){
    const kind=r.kind==='leave'?`ขอลา ${duration[r.duration]||r.duration||''}`:`ขอแก้เวลา ${events[r.requested_event_type]||r.requested_event_type||''} ${clock(r.requested_event_at)}`;
    const submitted=r.created_at?`${day(r.created_at)} ${clock(r.created_at)}`:'ไม่ระบุ';
-   let text=`${kind} · ${status[r.status]||r.status} · สำหรับวันที่ ${r.effective_date} · ส่ง ${submitted}`;
+   let text=`${r.sandbox?'[ทดลอง] ':''}${kind} · ${status[r.status]||r.status} · สำหรับวันที่ ${r.effective_date} · ส่ง ${submitted}`;
    if(r.kind==='correction'&&r.status==='APPROVED'){
     if(r.approved_sequence_in_month!=null)text+=` · ครั้งที่ ${r.approved_sequence_in_month}`;
     if(Number(r.deduction_amount)>0)text+=` · ยอดต้องหัก ${Number(r.deduction_amount)} บาท`;

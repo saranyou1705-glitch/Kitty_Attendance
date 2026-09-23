@@ -13,7 +13,7 @@ async function request(action,role='ADMIN',payload={},missingAttendance=false,ex
  if(missingAttendance){tables.daily_attendance=tables.daily_attendance.filter(r=>r.employee_id!=='ho');tables.employee_schedules=tables.employee_schedules.map(r=>({...r,schedule_status:'WORK'}))}
  Object.assign(tables,extras.tables||{});
  function query(table){let data=tables[table]||[],single=false;const q={select(){return q},eq(key,value){if(!['line_user_id','active'].includes(key))data=data.filter(r=>r[key]===value);return q},in(key,ids){data=data.filter(r=>ids.includes(r[key]));return q},gte(key,value){data=data.filter(r=>r[key]>=value);return q},lt(key,value){data=data.filter(r=>r[key]<value);return q},lte(key,value){data=data.filter(r=>r[key]<=value);return q},range(a,b){data=data.slice(a,b+1);return q},order(){return q},limit(){return q},maybeSingle(){single=true;return q},then(resolve,reject){return Promise.resolve({data:single?data[0]||null:data,error:extras.errors?.[table]||null}).then(resolve,reject)}};for(const method of ['insert','update','delete','upsert'])q[method]=()=>{writes++;throw Error('WRITE DETECTED')};return q}
- const context=vm.createContext({console,Intl,Date,Set,Map,URL,Response,fetch:async()=>({ok:true,json:async()=>({userId:'user'})}),mockCreateClient:()=>({from:query,rpc(){writes++;throw Error('RPC WRITE DETECTED')}}),Deno:{env:{get:k=>k==='STAGING_WRITE_ENABLED'?'true':'test'},serve:fn=>handler=fn}});
+ const context=vm.createContext({console,Intl,Date,Set,Map,URL,Response,fetch:async()=>({ok:true,json:async()=>({userId:'user'})}),mockCreateClient:()=>({from:query,rpc(name,args){if(extras.rpc)return extras.rpc(name,args);writes++;throw Error('RPC WRITE DETECTED')}}),Deno:{env:{get:k=>k==='STAGING_WRITE_ENABLED'?'true':'test'},serve:fn=>handler=fn}});
  vm.runInContext(js,context);const response=await handler(new Request('https://example.test/?action='+action,{method:'POST',headers:{'Content-Type':'application/json','x-line-access-token':'test'},body:JSON.stringify(payload)}));return {status:response.status,data:await response.json(),writes};
 }
 test('write actions blocked even if old write-enable secret is true',async()=>{for(const action of ['record','admin_update_event','admin_report_send','cron_report_send','admin_create_employee','self_weekend_wfh']){const r=await request(action);assert.equal(r.status,403);assert.equal(r.data.error,'STAGING_READ_ONLY');assert.equal(r.writes,0)}});
@@ -59,4 +59,14 @@ test('pending queue excludes other roles and completed requests and remains read
  assert.equal(r.status,200);assert.deepEqual(r.data.rows.map(r=>r.id),['h']);assert.equal(r.data.rows[0].employee.employee_code,'HO002');assert.equal(r.writes,0);
  assert.equal((await request('admin_request_queue',null)).status,403);
  const missing=await request('admin_request_queue','HR',{},false,{errors:{leave_requests_v2:{code:'42P01'}}});assert.equal(missing.data.warnings.length,1);
+});
+test('isolated submit uses verified actor and cannot be redirected to another RPC',async()=>{
+ let call;const r=await request('staging_request_submit',null,{actor:'forged',operation:'review',employeeId:'ba',kind:'leave'},false,{rpc:async(name,args)=>{call={name,args};return {data:{ok:true,sandbox:true},error:null}}});
+ assert.equal(r.status,200);assert.equal(call.name,'kitty_staging_request_v1');assert.equal(call.args.actor,'user');assert.equal(call.args.operation,'submit');assert.equal(r.writes,0);
+});
+test('employee cannot invoke isolated review and HR preview is fixed server-side',async()=>{
+ assert.equal((await request('staging_request_review',null,{id:'x',decision:'APPROVED'})).status,403);
+ let call;await request('staging_request_queue','HR',{previewRole:'ADMIN'},false,{rpc:async(name,args)=>{call=args;return {data:{ok:true,rows:[]},error:null}}});
+ assert.equal(call.payload.previewRole,'HR');
+ const r=await request('staging_request_review','ADMIN',{},false,{rpc:async()=>({error:{message:'ALREADY_REVIEWED'}})});assert.equal(r.status,409);
 });
