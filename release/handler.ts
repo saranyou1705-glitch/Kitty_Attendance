@@ -22,7 +22,13 @@ export function createHandler(runtime:Runtime){
    const url=new URL(legacyURL);url.searchParams.set('action',action);
    const response=await fetcher(url,{method:'POST',headers:{'Content-Type':'application/json','x-line-access-token':token},body:JSON.stringify(payload)});
    const result=await response.json();
-   if(!response.ok||!result.ok)throw Error(result.error||'LEGACY_FAILED');
+   if(!response.ok||!result.ok){
+     const message=String(result.error||'LEGACY_FAILED');
+     if(message.startsWith('GPS ยังไม่แม่นยำ'))throw Error('GPS_INACCURATE');
+     if(message.startsWith('คุณอยู่นอกพื้นที่'))throw Error('OUTSIDE_OFFICE');
+     if(message.includes('Default Office')||message==='ยังไม่ได้ตั้งค่าพิกัดและ Radius ของสาขาในระบบ')throw Error('OFFICE_NOT_CONFIGURED');
+     throw Error(message);
+   }
    return result;
   }
  });
@@ -40,7 +46,7 @@ export function createHandler(runtime:Runtime){
    return new Response(JSON.stringify(result),{status:200,headers});
   }catch(error){
    const message=error instanceof Error?error.message:'INTERNAL_ERROR';
-   const safe=['MISSING_LINE_TOKEN','INVALID_LINE_TOKEN','INVALID_FIELDS','INVALID_NAME','ADMIN_REQUIRED','FORBIDDEN','ALREADY_ADMIN','AMBIGUOUS_IDENTITY','SELF_ROLE_CHANGE','STALE_REGISTRATION','NOT_FOUND','ALREADY_REVIEWED','NOT_APPROVED','ACTION_NOT_CONNECTED','ACTIVE_EMPLOYEE_REQUIRED','INVALID_EVENT_TYPE','INVALID_LOCATION','PRODUCTION_CLOCK_NOT_ENABLED'];
+   const safe=['MISSING_LINE_TOKEN','INVALID_LINE_TOKEN','INVALID_FIELDS','INVALID_NAME','ADMIN_REQUIRED','FORBIDDEN','ALREADY_ADMIN','AMBIGUOUS_IDENTITY','SELF_ROLE_CHANGE','STALE_REGISTRATION','NOT_FOUND','ALREADY_REVIEWED','NOT_APPROVED','ACTION_NOT_CONNECTED','ACTIVE_EMPLOYEE_REQUIRED','INVALID_EVENT_TYPE','INVALID_LOCATION','PRODUCTION_CLOCK_NOT_ENABLED','GPS_INACCURATE','OUTSIDE_OFFICE','OFFICE_NOT_CONFIGURED','INVALID_STANDARD_SEQUENCE','INVALID_MULTI_BRANCH_SEQUENCE','INVALID_DRIVER_ACTION'];
    const code=safe.includes(message)?message:'SERVICE_UNAVAILABLE';
    return new Response(JSON.stringify({ok:false,error:code}),{status:code==='SERVICE_UNAVAILABLE'?503:code.includes('TOKEN')?401:['ADMIN_REQUIRED','FORBIDDEN'].includes(code)?403:400,headers});
   }

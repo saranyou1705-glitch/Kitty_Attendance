@@ -1,6 +1,6 @@
 'use strict';
 const $ = s => document.querySelector(s);
-const CONFIG = {liffId:'2010336238-UABz60wq', api:'https://rlqecfzddxpywbbbiirg.supabase.co/functions/v1/rapid-processor-staging'};
+const CONFIG = {liveApi:'https://rlqecfzddxpywbbbiirg.supabase.co/functions/v1/kitty-attendance-live',liffId:'2010336238-UABz60wq', api:'https://rlqecfzddxpywbbbiirg.supabase.co/functions/v1/rapid-processor-staging'};
 const menus = {
  admin:[['dashboard','⌂','ภาพรวมวันนี้'],['employees','♙','พนักงาน'],['offices','◇','Office / Branch'],['schedule','□','ตารางงาน'],['attendance','◷','แก้ไขเวลา'],['clock-approvals','✓','ขอลงเวลา'],['leave','✈','ขอลา'],['reports','▤','รายงาน'],['line','◉','LINE Report'],['audit','≋','Audit Log'],['settings','⚙','ตั้งค่าระบบ']],
  hr:[['dashboard','⌂','ภาพรวมวันนี้'],['employees','♙','พนักงาน'],['schedule','□','ตารางงาน'],['clock-approvals','✓','ขอลงเวลา'],['leave','✈','ขอลา'],['reports','▤','รายงาน']],
@@ -34,13 +34,38 @@ function loginLoading(){return '<div class="login-loading" role="status"><span c
 function panel(s){return `<section class="panel">${s}</section>`}
 function empty(s){return `<p class="empty-day">${esc(s)}</p>`}
 function disabled(label){const icon={'เข้างาน':'clock','ออกพัก':'coffee','กลับจากพัก':'coffee','ออกงาน':'logout'}[label];return `<button class="btn secondary" disabled title="ยังไม่เปิดการบันทึกในระบบทดลอง">${icon?uiIcon(icon):''}<span>${label}</span></button>`}
+const clockTypes={'เข้างาน':'IN','ออกพัก':'BREAK_OUT','กลับจากพัก':'BREAK_IN','ออกงาน':'OUT','เริ่มวันทำงาน':'DAY_IN','เข้าสาขา':'BRANCH_IN','ออกสาขา':'BRANCH_OUT','จบวันทำงาน':'DAY_OUT'};
+function clockButton(label,data){
+ const event=clockTypes[label],allowed=window.KittyClock?.allowedActions(data.employee?.attendance_mode||state.boot?.employee?.attendance_mode,data.events||[])||[];
+ const enabled=data.employee?.active===true&&allowed.includes(event)&&!state.clockBusy&&!state.clockRecorder?.uncertain;
+ return `<button class="btn ${enabled?'primary':'secondary'}" data-clock-event="${event}" ${enabled?'':'disabled'}><span>${label}</span></button>`;
+}
+function clockError(e){return ({GPS_INACCURATE:'พิกัด GPS ยังไม่แม่นยำ กรุณารอสักครู่แล้วลองใหม่',OUTSIDE_OFFICE:'คุณอยู่นอกพื้นที่สำนักงานหรือสาขาที่อนุญาต',OFFICE_NOT_CONFIGURED:'ยังไม่ได้กำหนดสำนักงานหรือพิกัด กรุณาติดต่อแอดมิน',EMPLOYEE_INACTIVE:'บัญชีพนักงานไม่ได้เปิดใช้งาน',ACTIVE_EMPLOYEE_REQUIRED:'บัญชีนี้ยังไม่มีพนักงานที่เปิดใช้งาน',ACTION_NOT_AVAILABLE:'สถานะการลงเวลาเปลี่ยนแล้ว กรุณาตรวจรายการล่าสุด',GPS_DENIED:'กรุณาอนุญาตตำแหน่งที่ตั้ง แล้วลองใหม่',INVALID_LOCATION:'อ่านพิกัดไม่สำเร็จ กรุณาลองใหม่',GPS_TIMEOUT:'อ่านตำแหน่งใช้เวลานาน กรุณาลองใหม่',RECONCILE_REQUIRED:'ต้องตรวจสถานะล่าสุดก่อนลงเวลาอีกครั้ง',SERVICE_UNAVAILABLE:'ยังยืนยันผลบันทึกไม่ได้ กรุณาตรวจสถานะล่าสุด',INVALID_STANDARD_SEQUENCE:'ลำดับลงเวลาเปลี่ยนแล้ว กรุณาตรวจสถานะ',INVALID_DRIVER_ACTION:'รายการนี้ลงเวลาแล้วหรือยังไม่ถึงลำดับ',INVALID_MULTI_BRANCH_SEQUENCE:'ลำดับเข้าสาขาเปลี่ยนแล้ว กรุณาตรวจสถานะ'})[e.message]||errorMessage(e)}
+function clockRecorder(){
+ if(!state.clockRecorder)state.clockRecorder=window.KittyClock.createRecorder({
+ loadToday:()=>api('today',{date:dateKey()}),record:payload=>api('record',payload),clock:now,
+ getPosition:()=>new Promise((resolve,reject)=>{if(!navigator.geolocation)return reject(Error('GPS_DENIED'));navigator.geolocation.getCurrentPosition(resolve,e=>reject(Error(e.code===3?'GPS_TIMEOUT':'GPS_DENIED')),{enableHighAccuracy:true,timeout:12000,maximumAge:0})})});
+ return state.clockRecorder;
+}
+async function submitClock(eventType){
+ if(state.clockBusy||!state.boot?.employee)return;
+ state.clockBusy=true;document.querySelectorAll('[data-clock-event]').forEach(b=>b.disabled=true);
+ try{await clockRecorder().submit(eventType);state.clockNotice='บันทึกลงเวลาจริงสำเร็จ';toast(state.clockNotice)}
+ catch(e){state.clockNotice=clockError(e);toast(state.clockNotice)}
+ finally{state.clockBusy=false;await render()}
+}
+async function refreshClock(){
+ if(state.clockBusy)return;state.clockBusy=true;
+ try{await clockRecorder().reconcile();state.clockNotice='อัปเดตสถานะล่าสุดแล้ว ตรวจเวลาในรายการก่อนกดอีกครั้ง'}catch(e){state.clockNotice=clockError(e)}
+ finally{state.clockBusy=false;await render()}
+}
 function table(headers,rows){return `<div class="data-scroll"><table class="data-table"><thead><tr>${headers.map(h=>`<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${r.map(c=>`<td>${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>${rows.length?'':empty('ไม่พบข้อมูลในช่วงที่เลือก')}`}
 function errorMessage(error){const m=String(error?.message||error);if(m==='Failed to fetch')return 'เชื่อมต่อข้อมูลไม่สำเร็จ กรุณาลองใหม่หรือตรวจอินเทอร์เน็ต';if(m==='EMPLOYEE_NOT_REGISTERED')return 'บัญชี LINE นี้ยังไม่ผูกกับพนักงาน';if(m==='INVALID_LINE_TOKEN'||m==='MISSING_LINE_TOKEN')return 'การเข้าสู่ระบบหมดอายุ กรุณาเข้าสู่ระบบ LINE อีกครั้ง';return m}
 async function api(action,payload={}){
  const token=window.liff?.getAccessToken();if(!token)throw new Error('MISSING_LINE_TOKEN');
  const control=new AbortController(),timer=setTimeout(()=>control.abort(),20000);
  const request={...payload};if(state.role==='hr'&&action.startsWith('admin_')||state.role==='hr'&&(action==='staging_schedule'||(action.startsWith('staging_request_')||action.startsWith('staging_ot_')||action.startsWith('staging_people_'))))request.previewRole='HR';
- try{const r=await fetch(`${CONFIG.api}?action=${encodeURIComponent(action)}`,{method:'POST',headers:{'Content-Type':'application/json','x-line-access-token':token},body:JSON.stringify(request),signal:control.signal});let data;try{data=await r.json()}catch{throw new Error(`บริการข้อมูลตอบกลับไม่สมบูรณ์ (${r.status})`)}if(!r.ok||!data.ok)throw new Error(data.message||data.error||`HTTP ${r.status}`);return data}finally{clearTimeout(timer)}
+ try{const r=await fetch(`${['record','today','employee_month'].includes(action)?CONFIG.liveApi:CONFIG.api}?action=${encodeURIComponent(action)}`,{method:'POST',headers:{'Content-Type':'application/json','x-line-access-token':token},body:JSON.stringify(request),signal:control.signal});let data;try{data=await r.json()}catch{throw new Error(`บริการข้อมูลตอบกลับไม่สมบูรณ์ (${r.status})`)}if(!r.ok||!data.ok)throw new Error(data.message||data.error||`HTTP ${r.status}`);return data}finally{clearTimeout(timer)}
 }
 function activeMenu(){if(state.connected&&state.boot&&!state.boot?.employee&&!state.boot?.isAdmin)return [];return state.personal?menus.employee:menus[state.role]}
 function loginRedirect(){const url=new URL('https://saranyou1705-glitch.github.io/Kitty_Attendance_Staging/');if(new URLSearchParams(location.search).get('view')==='hr')url.searchParams.set('view','hr');return url.href}
@@ -71,7 +96,7 @@ async function init(){
   state.boot=boot;state.connected=true;state.role=String(boot.adminRole).toUpperCase()==='HR'?'hr':boot.isAdmin?'admin':'employee';state.personal=false;
   if(state.role==='admin'&&new URLSearchParams(location.search).get('view')==='hr')state.role='hr';
   state.date=dateKey();state.month=state.date.slice(0,7);state.selected=state.date;state.page=state.role==='employee'?'clock':'dashboard';
-  $('#environmentStatus').textContent='STAGING · อ่านเวลาจริง · คำขอทดลอง';state.loginLoading=true;try{await render()}finally{state.loginLoading=false}
+  $('#environmentStatus').textContent='ลงเวลาจริง · คำขอและการจัดการยังเป็นชุดทดลอง';state.loginLoading=true;try{await render()}finally{state.loginLoading=false}
  }catch(e){$('#environmentStatus').textContent='STAGING · ยังไม่เชื่อมต่อข้อมูล';$('#content').innerHTML=panel(`<h2>โหลดข้อมูลไม่ได้</h2><p>${esc(errorMessage(e))}</p><button class="btn primary" data-action="reconnect">ลองเชื่อมต่อใหม่</button><button class="btn secondary" data-action="login">เข้าสู่ระบบ LINE ใหม่</button>`)}
 }
 async function directory(){if(state.directory)return state.directory;const role=state.role;const data=await api('admin_bootstrap');if(state.role===role)state.directory=data;return data}
@@ -90,7 +115,7 @@ function occupationalView(employee,data={},preview=false){
  if(!['MULTI_BRANCH','DRIVER'].includes(mode))return '';
  const ba=mode==='MULTI_BRANCH',labels=ba?['เริ่มวันทำงาน','เข้าสาขา','ออกพัก','กลับจากพัก','ออกสาขา','จบวันทำงาน']:['เข้างาน','ออกพัก','กลับจากพัก','ออกงาน'];
  const names={DAY_IN:'เริ่มวันทำงาน',BRANCH_IN:'เข้าสาขา',BREAK_OUT:'ออกพัก',BREAK_IN:'กลับจากพัก',BRANCH_OUT:'ออกสาขา',DAY_OUT:'จบวันทำงาน',IN:'เข้างาน',OUT:'ออกงาน'};
- return panel(`<div class="section-heading"><h2>${ba?'BA · งานสาขา':'Driver · งานขับรถ'}</h2><span class="attendance-tag">${preview?'ตัวอย่างหน้าจอ':'ข้อมูลของฉัน'}</span></div><div class="clock-actions">${labels.map(disabled).join('')}</div><h3>${ba?'การเข้าสาขาวันนี้':'การลงเวลาวันนี้'}</h3>${table(['รายการ','เวลา',...(ba?['สาขา']:[])],(data.events||[]).map(e=>[userLabel(e.event_type,'ไม่ระบุรายการ'),time(e.event_at),...(ba?[e.office?.name||e.office_name||e.office_id||'—']:[])]))}${preview?'<p>ตัวอย่างหน้าตาเท่านั้น ไม่มีข้อมูลพนักงานจริง และไม่บันทึกการลงเวลา</p>':''}`);
+ return panel(`<div class="section-heading"><h2>${ba?'BA · งานสาขา':'Driver · งานขับรถ'}</h2><span class="attendance-tag">${preview?'ตัวอย่างหน้าจอ':'ข้อมูลของฉัน'}</span></div><div class="clock-actions">${labels.map(label=>preview?disabled(label):clockButton(label,data)).join('')}</div><h3>${ba?'การเข้าสาขาวันนี้':'การลงเวลาวันนี้'}</h3>${table(['รายการ','เวลา',...(ba?['สาขา']:[])],(data.events||[]).map(e=>[userLabel(e.event_type,'ไม่ระบุรายการ'),time(e.event_at),...(ba?[e.office?.name||e.office_name||e.office_id||'—']:[])]))}${preview?'<p>ตัวอย่างหน้าตาเท่านั้น ไม่มีข้อมูลพนักงานจริง และไม่บันทึกการลงเวลา</p>':''}`);
 }
 function showRolePreview(mode){
  if(state.role!=='admin'||!state.boot?.isAdmin||String(state.boot.adminRole).toUpperCase()==='HR'||!['MULTI_BRANCH','DRIVER'].includes(mode))return;
@@ -104,7 +129,7 @@ async function clockView(){
  const data=await api('today',{date:dateKey()}),daily=data.daily;
  const latest=(data.events||[]).slice().sort((a,b)=>String(a.event_at).localeCompare(String(b.event_at))).at(-1);
  const status=latest?({IN:'เข้างานแล้ว',CHECK_IN:'เข้างานแล้ว',BREAK_OUT:'กำลังพัก',BREAK_IN:'กลับจากพักแล้ว',DAY_IN:'เริ่มวันทำงานแล้ว',BRANCH_IN:'อยู่ที่สาขา',BRANCH_OUT:'ออกจากสาขาแล้ว',DAY_OUT:'จบวันทำงานแล้ว',OUT:'ออกงานแล้ว',CHECK_OUT:'ออกงานแล้ว'}[latest.event_type]||'มีการลงเวลาแล้ว'):'ยังไม่ลงเวลา';
- return `<div class="view-heading"><div><p class="page-context">${esc(person(state.boot.employee))}</p><h1>วันทำงานของฉัน</h1></div></div><div class="personal-clock-layout"><section class="panel clock-card"><p data-clock-date></p><div class="big-time" data-clock></div><span class="attendance-tag">${status}${latest?' · '+time(latest.event_at):''}</span>${['MULTI_BRANCH','DRIVER'].includes(state.boot.employee.attendance_mode)?'':`<div class="clock-actions">${disabled('เข้างาน')}${disabled('ออกพัก')}${disabled('กลับจากพัก')}${disabled('ออกงาน')}</div>`}</section><section class="panel clock-summary"><h2>เวลาของฉันวันนี้</h2>${[['เข้างาน',daily?.first_in_at],['ออกพัก',daily?.break_out_at],['กลับจากพัก',daily?.break_in_at],['ออกงาน',daily?.last_out_at]].map(([label,value])=>`<div class="time-line"><span>${label}</span><strong>${time(value)}</strong></div>`).join('')}<div class="time-line"><span>ทำงานสุทธิ</span><strong>${hours(daily?.paid_work_hours)}</strong></div></section></div>${occupationalView(state.boot.employee,data)}`;
+ return `<div class="view-heading"><div><p class="page-context">${esc(person(state.boot.employee))}</p><h1>วันทำงานของฉัน</h1></div></div><p class="live-clock-notice" role="status">${esc(state.clockNotice||'การลงเวลาหน้านี้บันทึกเข้าระบบจริง')}</p><button class="btn secondary" data-clock-refresh ${state.clockBusy?'disabled':''}>ตรวจสถานะล่าสุด</button><div class="personal-clock-layout"><section class="panel clock-card"><p data-clock-date></p><div class="big-time" data-clock></div><span class="attendance-tag">${status}${latest?' · '+time(latest.event_at):''}</span>${['MULTI_BRANCH','DRIVER'].includes(state.boot.employee.attendance_mode)?'':`<div class="clock-actions">${clockButton('เข้างาน',data)}${clockButton('ออกพัก',data)}${clockButton('กลับจากพัก',data)}${clockButton('ออกงาน',data)}</div>`}</section><section class="panel clock-summary"><h2>เวลาของฉันวันนี้</h2>${[['เข้างาน',daily?.first_in_at],['ออกพัก',daily?.break_out_at],['กลับจากพัก',daily?.break_in_at],['ออกงาน',daily?.last_out_at]].map(([label,value])=>`<div class="time-line"><span>${label}</span><strong>${time(value)}</strong></div>`).join('')}<div class="time-line"><span>ทำงานสุทธิ</span><strong>${hours(daily?.paid_work_hours)}</strong></div></section></div>${occupationalView(state.boot.employee,data)}`;
 }
 async function dashboardView(){
  const [d,requests]=await Promise.all([api('admin_daily',{date:state.date}),requestQueue()]);
@@ -266,7 +291,7 @@ async function render(){
  navigation();if(!state.connected)return;
  const version=++renderVersion;$('#content').innerHTML=state.loginLoading?loginLoading():panel('กำลังโหลดข้อมูล…');
  const views={clock:clockView,dashboard:dashboardView,employees:employeesView,schedule:scheduleView,calendar:calendarView,reports:reportView,line:lineView,'my-leave':()=>personalRequestView('leave'),'clock-request':()=>personalRequestView('correction'),more:managementView,attendance:attendanceView,offices:async()=>{const d=await directory();return panel(table(['รหัส','สำนักงาน'],d.offices.map(o=>[o.office_code,o.name])))},leave:()=>requestsView('leave'),'clock-approvals':()=>requestsView('correction')};
- try{const html=await (views[state.page]||unavailableView)();if(version===renderVersion){$('#content').innerHTML=html+(html.includes(' disabled')?'<p class="availability-note">ปุ่มสีเทายังไม่เปิดการบันทึกใน Staging · ใช้งานผ่านระบบเดิมได้ตามปกติ</p>':'');tick();if(state.page==='clock-request'&&$('#overtimeForm')?.elements)loadOvertimeBalance($('#overtimeForm [data-ot-balance]'))}}
+ try{const html=await (views[state.page]||unavailableView)();if(version===renderVersion){$('#content').innerHTML=html+(html.includes('title="ยังไม่เปิดการบันทึกในระบบทดลอง"')?'<p class="availability-note">ปุ่มสีเทายังไม่เปิดการบันทึกใน Staging · ใช้งานผ่านระบบเดิมได้ตามปกติ</p>':'');tick();if(state.page==='clock-request'&&$('#overtimeForm')?.elements)loadOvertimeBalance($('#overtimeForm [data-ot-balance]'))}}
  catch(e){if(version===renderVersion)$('#content').innerHTML=panel(`<h2>โหลดข้อมูลไม่สำเร็จ</h2><p>${esc(errorMessage(e))}</p><button class="btn primary" data-action="retry">ลองใหม่</button>`)}
 }
 function tick(){document.querySelectorAll('[data-clock]').forEach(el=>el.textContent=new Intl.DateTimeFormat('th-TH',{timeZone:'Asia/Bangkok',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).format(now()));document.querySelectorAll('[data-clock-date]').forEach(el=>el.textContent=displayDate(dateKey()))}
@@ -417,6 +442,8 @@ async function showEmployee(id){
 document.addEventListener('click',e=>{
  const b=e.target.closest('button');if(!b||b.disabled)return;
  if(b.id==='selfProfileButton'){showSelfProfile();return}
+ if(b.dataset.clockEvent){submitClock(b.dataset.clockEvent);return}
+ if(b.dataset.clockRefresh!==undefined){refreshClock();return}
  if(b.dataset.addPersonnel!==undefined){personnelEditor();return}
  if(b.dataset.editPersonnel){personnelEditor(personnelTarget(b.dataset.editPersonnel));return}
  if(b.dataset.registration){personnelEditor({registrationId:b.dataset.registration});return}

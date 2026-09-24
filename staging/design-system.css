@@ -157,3 +157,5 @@ button,input,select,textarea{letter-spacing:normal;line-height:1.5}h1,h2,h3,.bra
 .login-loading .kitty-logo{width:clamp(160px,35vw,250px)}
 .login-loading p{margin:0;color:var(--muted);font-size:14px}
 @media(max-width:380px){.brand .kitty-logo{width:50px}.app-chrome .brand{gap:8px}.brand strong{font-size:14px}}
+
+.live-clock-notice{padding:12px 16px;border:1px solid var(--line);border-radius:14px;background:var(--soft);margin-bottom:12px}.live-clock-notice+[data-clock-refresh]{margin-bottom:20px}

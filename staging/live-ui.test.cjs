@@ -6,7 +6,7 @@ const source=fs.readFileSync(__dirname+'/app.js','utf8').replace('navigation();i
 function setup(fetcher){
  const nodes=new Map(),listeners={},storage=new Map();
  const node=key=>{if(!nodes.has(key))nodes.set(key,{innerHTML:'',textContent:'',hidden:false,value:'',classList:{add(){},remove(){},toggle(){}},showModal(){}});return nodes.get(key)};
- const context=vm.createContext({console,Intl,Date,Number,String,Set,Map,JSON,Promise,AbortController,FormData,crypto:require('node:crypto').webcrypto,setTimeout,clearTimeout,setInterval(){},window:{KittyIndividualReport:require('./individual-report.js'),liff:{getAccessToken:()=> 'test-token'}},document:{querySelector:node,querySelectorAll:()=>[],addEventListener:(key,fn)=>listeners[key]=fn},sessionStorage:{getItem:k=>storage.get(k),setItem:(k,v)=>storage.set(k,v)},fetch:fetcher||(async()=>{throw Error('Failed to fetch')})});
+ const context=vm.createContext({console,Intl,Date,Number,String,Set,Map,JSON,Promise,AbortController,FormData,crypto:require('node:crypto').webcrypto,setTimeout,clearTimeout,setInterval(){},window:{KittyClock:require('./attendance-client.js'),KittyIndividualReport:require('./individual-report.js'),liff:{getAccessToken:()=> 'test-token'}},document:{querySelector:node,querySelectorAll:()=>[],addEventListener:(key,fn)=>listeners[key]=fn},sessionStorage:{getItem:k=>storage.get(k),setItem:(k,v)=>storage.set(k,v)},fetch:fetcher||(async()=>{throw Error('Failed to fetch')})});
  vm.runInContext(source,context);return {run:code=>vm.runInContext(code,context),node,listeners};
 }
 test('Bangkok clock converts timestamps and no fixed demo clock remains',()=>{
@@ -298,4 +298,22 @@ test('supplied logo replaces flower and appears in initial and LINE loading stat
  assert(!html.includes('✿'));assert(html.includes('src="kitty-logo.png"'));assert(html.includes('class="login-loading"'));
  assert(run('loginLoading()').includes('kitty-logo.png'));assert(source.includes("state.loginLoading?loginLoading()"));
  assert(fs.existsSync(__dirname+'/kitty-logo.png'));
+});
+
+test('clock reads and writes route to production while request submissions remain isolated',async()=>{
+ const urls=[];const {run}=setup(async(url)=>{urls.push(url);return {ok:true,json:async()=>({ok:true})}});
+ await run("api('today',{date:'2026-09-24'})");await run("api('record',{eventType:'IN'})");await run("api('staging_request_submit',{kind:'leave'})");
+ assert(urls[0].includes('/kitty-attendance-live?'));assert(urls[1].includes('/kitty-attendance-live?'));assert(urls[2].includes('/rapid-processor-staging?'));
+});
+test('real clock enables only valid actions for active employees and blocks uncertain writes',()=>{
+ const {run}=setup();
+ run("var d={employee:{active:true,attendance_mode:'STANDARD'},events:[]}");
+ assert(!run("clockButton('เข้างาน',d)").includes('disabled'));assert(run("clockButton('ออกพัก',d)").includes('disabled'));
+ run("d.events=[{event_type:'IN',event_at:'2026-09-24T02:00:00Z'}]");
+ assert(!run("clockButton('ออกพัก',d)").includes('disabled'));assert(!run("clockButton('ออกงาน',d)").includes('disabled'));
+ run("state.clockRecorder={uncertain:true}");assert(run("clockButton('ออกพัก',d)").includes('disabled'));
+});
+test('preview BA controls cannot send a real attendance event',()=>{
+ const {run}=setup();const html=run("occupationalView({attendance_mode:'MULTI_BRANCH'},{},true)");
+ assert(!html.includes('data-clock-event'));assert(html.includes('disabled'));
 });
