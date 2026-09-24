@@ -3,6 +3,12 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const vm=require('node:vm');
 const source=fs.readFileSync(__dirname+'/app.js','utf8').replace('navigation();init();','');
+test('request history explains correction event/time and pink approved status without mislabeling trial data',()=>{
+ const {run}=setup();run('CONFIG.requestsLive=true');
+ const html=run("myRequestHistory([{kind:'correction',status:'APPROVED',sandbox:false,requested_event_type:'BREAK_OUT',requested_event_at:'2026-09-24T05:30:00Z',reason:'<script>bad</script>'}])");
+ assert(html.includes('ขอแก้เวลา · ออกพัก · เวลา 12:30'));assert(html.includes('request-approved'));assert(html.includes('อนุมัติแล้ว'));assert(!html.includes('รายการทดลอง'));assert(!html.includes('<script>'));
+ const trial=run("myRequestHistory([{kind:'overtime',mode:'USE_PRIOR',status:'APPROVED',sandbox:true}])");assert(trial.includes('ขอใช้ OT'));assert(trial.includes('รายการทดลอง'));assert(trial.includes('request-approved'));
+});
 test('real clock buttons retain design icons for enabled and disabled states',()=>{
  const {run}=setup();run("var iconData={employee:{active:true,attendance_mode:'STANDARD'},events:[]}");
  for(const [label,icon] of [['เข้างาน','clock'],['ออกพัก','coffee'],['กลับจากพัก','coffee'],['ออกงาน','logout']]){
@@ -250,7 +256,7 @@ test('late queue response cannot restore an approved request',async()=>{
 });
 test('completed requests are retained only in collapsed history',()=>{
  const {run}=setup();const html=run("personalHistory([{id:'one',kind:'overtime',status:'APPROVED',reason:'approved history'},{id:'two',kind:'overtime',status:'PENDING',reason:'pending request'}])");
- assert(html.indexOf('pending request')<html.indexOf('<details'));assert(html.indexOf('approved history')>html.indexOf('<details'));assert(!html.includes('<details open'));assert(html.includes('อนุมัติทดลอง'));
+ assert(html.indexOf('pending request')<html.indexOf('<details'));assert(html.indexOf('approved history')>html.indexOf('<details'));assert(!html.includes('<details open'));assert(html.includes('อนุมัติแล้ว'));
 });
 test('personal background refresh updates history without replacing typed form',async()=>{
  const {run,node}=setup(async()=>({ok:true,json:async()=>({ok:true,rows:[]})}));
@@ -268,7 +274,7 @@ test('OT form uses fresh balance instead of displaying a previous approved reque
  const {run,node}=setup(async(url)=>({ok:true,json:async()=>new URL(url).searchParams.get('action')==='staging_ot_balance'?{ok:true,settlement_state:'READY',minutes:0,available_minutes:0}:{ok:true,rows:[{id:'a',kind:'overtime',status:'APPROVED',settlement_state:'READY',mode:'USE_PRIOR',work_date:'2026-09-24',minutes:35}]}}));
  node('#overtimeForm').elements={mode:{value:'USE_PRIOR'},date:{value:'2026-09-24'}};
  await run("loadOvertimeBalance({disabled:false})");
- const html=node('#otBalance').innerHTML;assert(!html.includes('ใช้ชดแล้ว'));assert(!html.includes('0 ชม. 35 นาที'));assert(html.includes('คำขอนี้อนุมัติแล้ว'));assert.equal((html.match(/class="ot-total"/g)||[]).length,0);
+ const html=node('#otBalance').innerHTML;assert(!html.includes('ใช้ชดแล้ว'));assert(!html.includes('0 ชม. 35 นาที'));assert(html.includes('อนุมัติแล้ว'));assert.equal((html.match(/class="ot-total"/g)||[]).length,0);
 });
 test('monthly sandbox OT is scoped separately and includes current-day approval',async()=>{
  const ids=[];const {run}=setup(async(url,options)=>{ids.push(JSON.parse(options.body).employeeId);return {ok:true,json:async()=>({ok:true,rows:[{id:'a',kind:'overtime',status:'APPROVED',settlement_state:'READY',minutes:35}]})}});
