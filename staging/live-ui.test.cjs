@@ -247,3 +247,22 @@ test('employee modes and branch events use readable labels without changing form
  assert(run("eventsTable([{event_type:'BRANCH_IN'}])").includes('เข้าสาขา'));assert(run("leaveView()").includes('value="FULL_DAY"'));
  assert.equal(run("scheduleLabel('SICK_LEAVE')"),'ลาป่วย');assert.equal(run("userLabel('UNRECOGNIZED_CODE')"),'ไม่ระบุ');
 });
+test('HR personnel page enables edit/add and keeps new registrations separate',async()=>{
+ const {run}=setup(async(url)=>({ok:true,json:async()=>new URL(url).searchParams.get('action')==='admin_bootstrap'?{ok:true,employees:[{id:'ho',name:'Office',employee_code:'HO001',active:true,attendance_mode:'STANDARD'}]}:{ok:true,profiles:[],registrations:[{id:'reg',name:'New Name',unread:true}]}}));
+ run("state.role='hr'");const html=await run('employeesView()');assert(html.includes('data-add-personnel'));assert(html.includes('data-edit-personnel="ho"'));assert(html.includes('New Name'));assert(html.includes('data-registration="reg"'));
+});
+test('personnel editor has seven dayoff checkboxes and preserves checked days',async()=>{
+ const {run,node}=setup(async()=>({ok:true,json:async()=>({ok:true,profile:{employee_id:'ho',employee_code:'HO001',name:'Name',weekly_dayoffs:['MON','SUN'],version:0}})}));
+ run("state.role='hr'");await run("personnelEditor({employeeId:'ho'})");
+ const html=node('#actionBody').innerHTML;assert.equal((html.match(/type="checkbox"/g)||[]).length,7);assert(html.includes('value="MON" checked'));assert(html.includes('value="SUN" checked'));assert(!html.includes('name="role"'));
+});
+test('registration unread dot belongs to employees and disappears after server read',()=>{
+ const {run}=setup();run("state.role='hr';state.boot={profile:{userId:'hr'}};requestCache.set(requestScope(),{rows:[{id:'reg',kind:'registration',unread:true}]})");
+ assert(run("requestBadge('employees')").includes('unread-dot'));assert.equal(run("requestBadge('leave')"),'');
+ run("requestCache.set(requestScope(),{rows:[{id:'reg',kind:'registration',unread:false}]})");assert.equal(run("requestBadge('employees')"),'');
+});
+test('new signup asks only name and existing submission shows waiting status',async()=>{
+ let registered=false;const {run}=setup(async()=>({ok:true,json:async()=>({ok:true,registration:registered?{name:'New',status:'PENDING'}:null})}));
+ const html=await run('signupView()');assert(html.includes('name="name"'));assert(!html.includes('name="employee_code"'));assert(!html.includes('name="role"'));
+ registered=true;assert((await run('signupView()')).includes('ส่งชื่อให้ HR แล้ว'));
+});

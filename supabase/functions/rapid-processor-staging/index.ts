@@ -24,6 +24,7 @@ const STAGING_REQUEST_ACTIONS:Record<string,string> = {
   staging_ot_submit:"submit",staging_ot_balance:"balance",staging_ot_review:"review",
   staging_ot_cancel:"cancel",staging_ot_mine:"mine",staging_ot_queue:"queue",staging_ot_report:"report",
 };
+const STAGING_PERSONNEL_ACTIONS:Record<string,string>={staging_people_register:"register",staging_people_mine:"mine",staging_people_list:"list",staging_people_get:"get",staging_people_save:"save",staging_people_read:"read"};
 const STAGING_READ_ACTIONS = new Set([
   "bootstrap",
   "registration_options",
@@ -1068,7 +1069,7 @@ Deno.serve(async (req) => {
     const action = url.searchParams.get("action") || "bootstrap";
     const body = req.method === "POST" ? await req.json().catch(() => ({})) : {};
 
-    if (!STAGING_READ_ACTIONS.has(action) && !Object.prototype.hasOwnProperty.call(STAGING_REQUEST_ACTIONS,action)) {
+    if (!STAGING_READ_ACTIONS.has(action) && !Object.prototype.hasOwnProperty.call(STAGING_REQUEST_ACTIONS,action) && !Object.prototype.hasOwnProperty.call(STAGING_PERSONNEL_ACTIONS,action)) {
       return json({
         ok: false,
         error: "STAGING_READ_ONLY",
@@ -1119,6 +1120,14 @@ Deno.serve(async (req) => {
     }
 
     const profile = await verifyLine(req);
+    if(Object.prototype.hasOwnProperty.call(STAGING_PERSONNEL_ACTIONS,action)){
+      const {data,error}=await supabase.rpc("kitty_staging_personnel_v1",{actor:profile.userId,operation:STAGING_PERSONNEL_ACTIONS[action],payload:body});
+      if(error){const known=["UNAUTHENTICATED","FORBIDDEN","ALREADY_EMPLOYEE","INVALID_NAME","NOT_FOUND","INVALID_REQUEST","STALE_PROFILE","CODE_IMMUTABLE","HO_ONLY","DUPLICATE_CODE","INVALID_DAYOFF"];
+        const message=known.includes(error.message)?error.message:error.code==="23505"?"DUPLICATE_CODE":"PERSONNEL_SERVICE_ERROR";
+        return json({ok:false,error:message},message==="FORBIDDEN"?403:message==="PERSONNEL_SERVICE_ERROR"?503:400);
+      }
+      return json(data);
+    }
 
 
     if (action === "registration_options") {

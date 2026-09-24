@@ -38,10 +38,10 @@ function errorMessage(error){const m=String(error?.message||error);if(m==='Faile
 async function api(action,payload={}){
  const token=window.liff?.getAccessToken();if(!token)throw new Error('MISSING_LINE_TOKEN');
  const control=new AbortController(),timer=setTimeout(()=>control.abort(),20000);
- const request={...payload};if(state.role==='hr'&&action.startsWith('admin_')||state.role==='hr'&&(action==='staging_schedule'||(action.startsWith('staging_request_')||action.startsWith('staging_ot_'))))request.previewRole='HR';
+ const request={...payload};if(state.role==='hr'&&action.startsWith('admin_')||state.role==='hr'&&(action==='staging_schedule'||(action.startsWith('staging_request_')||action.startsWith('staging_ot_')||action.startsWith('staging_people_'))))request.previewRole='HR';
  try{const r=await fetch(`${CONFIG.api}?action=${encodeURIComponent(action)}`,{method:'POST',headers:{'Content-Type':'application/json','x-line-access-token':token},body:JSON.stringify(request),signal:control.signal});let data;try{data=await r.json()}catch{throw new Error(`บริการข้อมูลตอบกลับไม่สมบูรณ์ (${r.status})`)}if(!r.ok||!data.ok)throw new Error(data.message||data.error||`HTTP ${r.status}`);return data}finally{clearTimeout(timer)}
 }
-function activeMenu(){return state.personal?menus.employee:menus[state.role]}
+function activeMenu(){if(state.connected&&state.boot&&!state.boot?.employee&&!state.boot?.isAdmin)return [];return state.personal?menus.employee:menus[state.role]}
 function loginRedirect(){const url=new URL('https://saranyou1705-glitch.github.io/Kitty_Attendance_Staging/');if(new URLSearchParams(location.search).get('view')==='hr')url.searchParams.set('view','hr');return url.href}
 function navigation(){
  $('#pageHeader').hidden=state.connected&&['dashboard','clock'].includes(state.page);
@@ -98,7 +98,7 @@ function showRolePreview(mode){
 }
 
 async function clockView(){
- if(!state.boot.employee)return panel(empty('บัญชีนี้ยังไม่ผูกกับพนักงาน'));
+ if(!state.boot.employee)return state.boot.isAdmin?panel(empty('บัญชีนี้ยังไม่ผูกกับพนักงาน')):signupView();
  const data=await api('today',{date:dateKey()}),daily=data.daily;
  const latest=(data.events||[]).slice().sort((a,b)=>String(a.event_at).localeCompare(String(b.event_at))).at(-1);
  const status=latest?({IN:'เข้างานแล้ว',CHECK_IN:'เข้างานแล้ว',BREAK_OUT:'กำลังพัก',BREAK_IN:'กลับจากพักแล้ว',DAY_IN:'เริ่มวันทำงานแล้ว',BRANCH_IN:'อยู่ที่สาขา',BRANCH_OUT:'ออกจากสาขาแล้ว',DAY_OUT:'จบวันทำงานแล้ว',OUT:'ออกงานแล้ว',CHECK_OUT:'ออกงานแล้ว'}[latest.event_type]||'มีการลงเวลาแล้ว'):'ยังไม่ลงเวลา';
@@ -109,8 +109,50 @@ async function dashboardView(){
  return `<div class="dashboard-heading"><div><p class="page-context">${state.role==='hr'?'HR · Head Office':'Admin · ทุกกลุ่มพนักงาน'}</p><h1>ภาพรวมวันนี้</h1></div>${dayPicker()}</div><div class="stats">${[['เข้างานแล้ว',d.summary.checked_in],['ยังไม่เข้างาน',d.summary.not_checked_in],['ลา',d.summary.leave],['ออกงานแล้ว',d.summary.checked_out],['วันหยุด',d.summary.off],['กำลังพัก',d.summary.on_break]].map(([label,count])=>`<article class="stat-card"><span>${label}</span><strong>${count??'—'}</strong></article>`).join('')}</div><div class="dashboard-layout"><section class="panel dashboard-main"><div class="section-heading"><h2>การลงเวลาวันนี้</h2><button class="btn secondary" data-page="employees">${uiIcon('arrow')}ดูพนักงานทั้งหมด</button></div>${attendancePeople(d.rows)}<details class="event-details"><summary>ตารางเวลารายละเอียด</summary>${dailyTable(d.rows)}</details></section><aside class="dashboard-aside"><section class="panel dashboard-report"><h2>รายงาน</h2><button class="btn primary" data-page="reports">${uiIcon('reports')}เปิดศูนย์รายงาน</button></section><section class="panel"><h2>สัปดาห์นี้</h2>${weekPicker()}<p class="week-caption">${displayDate(state.date)}</p><button class="btn secondary" data-page="schedule">ดูตารางงาน</button></section></aside><section class="panel dashboard-requests"><div class="section-heading"><h2>คำขอใหม่ / รออนุมัติ</h2><button class="btn secondary" data-page="clock-approvals">ดูทั้งหมด</button></div>${requestList(requests,5)}${state.role==='admin'?'<div class="request-shortcuts"><button class="btn secondary" data-page="line">LINE Report</button><button class="btn secondary" data-role-preview="MULTI_BRANCH">ดูหน้า BA / Driver</button></div>':''}</section></div>`;
 }
 function dailyTable(rows){return table(['พนักงาน','วันที่','เข้างาน','ออกงาน','ชั่วโมงทำงาน'],(rows||[]).map(r=>[person(r.employee),r.work_date,time(r.first_in_at),time(r.last_out_at),hours(r.paid_work_hours)]))}
-async function employeesView(){const d=await directory();return panel(`<label class="field">ค้นหาพนักงาน<input id="employeeSearch" type="search" placeholder="ชื่อหรือรหัส"></label><div id="employeeResults">${employeeRows(d.employees)}</div>${disabled('เพิ่มพนักงาน')}`)}
-function employeeRows(employees,attendanceOnly=false){return (employees||[]).map(e=>`<div class="employee-row"><div><strong>${esc(person(e))}</strong><small>${esc(userLabel(e.attendance_mode))} · ${e.active?'ใช้งานอยู่':'ปิดใช้งาน'}</small></div><button class="btn secondary" ${attendanceOnly?'data-employee':'data-profile'}="${esc(e.id)}">${attendanceOnly?'ดูการลงเวลา':'ดูข้อมูล'}</button>${disabled('แก้ไข')}</div>`).join('')||empty('ไม่พบพนักงาน')}
+
+async function signupView(){
+ const d=await api('staging_people_mine'),r=d.registration;
+ if(r)return panel(`<h2>${r.status==='READY'?'HR กรอกข้อมูลแล้ว':'ส่งชื่อให้ HR แล้ว'}</h2><p>${esc(r.name)}</p><p>${r.status==='READY'?'ข้อมูลอยู่ในชุดทดลอง รอเปิดใช้งานจริง':'รอ HR ตรวจสอบและเติมข้อมูลพนักงาน'}</p><button class="btn secondary" data-action="retry">ตรวจสถานะ</button>`);
+ return panel('<h2>ลงทะเบียนพนักงานใหม่</h2><form id="signupForm" class="request-form"><label>ชื่อ–นามสกุล<input name="name" maxlength="160" required autocomplete="name"></label><p>ส่งให้ HR Head Office กรอกข้อมูลส่วนที่เหลือ · ชุดทดลอง</p><button class="btn primary" type="submit">ส่งชื่อให้ HR</button></form>');
+}
+async function submitSignup(form){
+ const button=form.querySelector('button');button.disabled=true;
+ try{await api('staging_people_register',{name:new FormData(form).get('name')});await render()}catch(e){toast(peopleError(e))}finally{button.disabled=false}
+}
+function peopleError(e){return ({STALE_PROFILE:'มีการบันทึกข้อมูลนี้แล้ว กรุณาปิดและเปิดใหม่',DUPLICATE_CODE:'รหัสพนักงานนี้มีอยู่แล้ว',INVALID_NAME:'กรุณากรอกชื่อไม่เกิน 160 ตัวอักษร',INVALID_DAYOFF:'กรุณาเลือกวันหยุดจากช่องที่กำหนด',HO_ONLY:'เพิ่มพนักงานใหม่ได้เฉพาะ Head Office ในชุดทดลอง',CODE_IMMUTABLE:'ยังไม่เปิดให้เปลี่ยนรหัสพนักงานเดิม',ALREADY_EMPLOYEE:'บัญชีนี้มีข้อมูลพนักงานแล้ว',INVALID_REQUEST:'กรุณาตรวจชื่อและรหัสพนักงาน',PERSONNEL_SERVICE_ERROR:'บันทึกข้อมูลพนักงานไม่สำเร็จ กรุณาลองใหม่'})[e.message]||workflowError(e)}
+function personnelTarget(id){const row=(state.peopleRows||[]).find(e=>e.id===id);return row?.sandbox_new?{profileId:row.id}:{employeeId:id}}
+async function loadPeople(){
+ const [d,p]=await Promise.all([directory(),api('staging_people_list')]);
+ const rows=(d.employees||[]).map(e=>{const s=(p.profiles||[]).find(p=>p.employee_id===e.id);return s?{...e,...s,id:e.id,sandbox_profile:s.id}:e});
+ rows.push(...(p.profiles||[]).filter(p=>!p.employee_id).map(p=>({...p,active:true,attendance_mode:'STANDARD',sandbox_new:true})));
+ state.peopleRows=rows;return {rows,registrations:p.registrations||[]};
+}
+async function personnelEditor(target={}){
+ if(!['admin','hr'].includes(state.role)||state.personal)return;
+ try{
+  const d=await api('staging_people_get',target),p=d.profile||{};
+  const context={...target,profileId:p.id||target.profileId||crypto.randomUUID(),version:p.version||0};
+  if(target.employeeId)delete context.profileId;
+  state.personnelEdit=context;
+  const weekdays=['MON','TUE','WED','THU','FRI','SAT','SUN'];
+  $('#actionTitle').textContent=target.registrationId?'เติมข้อมูลพนักงานใหม่':target.employeeId||p.id?'แก้ไขข้อมูลพนักงาน':'เพิ่มพนักงาน Head Office';
+  $('#actionBody').innerHTML=`<form id="personnelForm" class="request-form"><label>ชื่อ–นามสกุล<input name="name" value="${esc(p.name||'')}" maxlength="160" required></label><label>รหัสพนักงาน<input name="employee_code" value="${esc(p.employee_code||'')}" placeholder="HO027" ${p.employee_id||p.id?'readonly':''} pattern="[A-Za-z]{2,8}[0-9]{1,8}" required></label><label>แผนก<input name="department" value="${esc(p.department||'')}" maxlength="160"></label><label>ตำแหน่ง<input name="position" value="${esc(p.position||'')}" maxlength="160"></label><label>วันที่เริ่มงาน<input type="date" name="start_date" value="${esc(p.start_date||'')}"></label><fieldset class="weekly-dayoffs"><legend>วันหยุดประจำสัปดาห์</legend>${weekdays.map(day=>`<label><input type="checkbox" name="weekly_dayoffs" value="${day}" ${(p.weekly_dayoffs||[]).includes(day)?'checked':''}>${userLabel(day)}</label>`).join('')}</fieldset>${d.line_user_id?`<p>LINE User ID : ${esc(d.line_user_id)}</p>`:''}<p class="panel-sub">บันทึกในชุดทดลอง ไม่เปลี่ยนบัญชี สิทธิ์ หรือตารางงานระบบเดิม</p><button type="submit" class="btn primary">บันทึกข้อมูลทดลอง</button></form>`;
+  $('#actionDialog').showModal();
+  if(target.registrationId){await api('staging_people_read',{registrationId:target.registrationId});await requestQueue()}
+ }catch(e){toast(peopleError(e))}
+}
+async function savePersonnel(form){
+ const button=form.querySelector('button[type="submit"]'),fd=new FormData(form);button.disabled=true;
+ const data={...state.personnelEdit,name:fd.get('name'),employee_code:fd.get('employee_code'),department:fd.get('department'),position:fd.get('position'),start_date:fd.get('start_date'),weekly_dayoffs:fd.getAll('weekly_dayoffs')};
+ try{await api('staging_people_save',data);$('#actionDialog').close();state.directory=null;await render();await requestQueue();toast('บันทึกข้อมูลพนักงานในชุดทดลองแล้ว')}catch(e){toast(peopleError(e))}finally{button.disabled=false}
+}
+
+async function employeesView(){
+ const d=await loadPeople();
+ return panel(`<div class="section-heading"><h2>พนักงาน</h2><button class="btn primary" data-add-personnel>เพิ่มพนักงาน</button></div><p class="panel-sub">ข้อมูลที่แก้ไขและพนักงานใหม่บันทึกเฉพาะชุดทดลอง</p>${d.registrations.length?`<h3>พนักงานใหม่รอเติมข้อมูล</h3>${d.registrations.map(r=>`<div class="employee-row"><strong>${esc(r.name)}</strong><button class="btn secondary ${r.unread?'request-unread':''}" data-registration="${esc(r.id)}">เปิดอ่าน / เติมข้อมูล</button></div>`).join('')}`:''}<label class="field">ค้นหาพนักงาน<input id="employeeSearch" type="search" placeholder="ชื่อหรือรหัส"></label><div id="employeeResults">${employeeRows(d.rows)}</div>`);
+}
+
+function employeeRows(employees,attendanceOnly=false){return (employees||[]).map(e=>`<div class="employee-row"><div><strong>${esc(person(e))}</strong><small>${esc(userLabel(e.attendance_mode))} · ${e.active?'ใช้งานอยู่':'ปิดใช้งาน'}</small></div><button class="btn secondary" ${attendanceOnly?'data-employee':'data-profile'}="${esc(e.id)}">${attendanceOnly?'ดูการลงเวลา':'ดูข้อมูล'}</button>${attendanceOnly?'':`<button class="btn secondary" data-edit-personnel="${esc(e.id)}">แก้ไข</button>`}</div>`).join('')||empty('ไม่พบพนักงาน')}
 
 
 function userLabel(value,fallback='ไม่ระบุ'){
@@ -232,8 +274,8 @@ function invalidateReviewedRequest(kind,id){const scope=requestScope();queueVers
 function requestScope(){return state.boot?.profile?.userId ? 'kitty-request-read:'+state.boot.profile.userId+':'+state.role : null}
 function readRequestIds(){const key=requestScope();if(!key)return new Set();const memory=readMemory.get(key)||[];try{const stored=JSON.parse(localStorage.getItem(key)||'[]');return new Set([...memory,...(Array.isArray(stored)?stored:[])])}catch{return new Set(memory)}}
 function requestKey(r){return r.kind+':'+r.id}
-function unreadRequests(kind){if(state.personal||!['hr','admin'].includes(state.role))return [];const ids=readRequestIds();return (requestCache.get(requestScope())?.rows||[]).filter(r=>r.id&&requestCategory(r)===kind&&!ids.has(requestKey(r)))}
-function requestBadge(page){const kind=page==='leave'?'leave':page==='clock-approvals'?'correction':null;return kind&&unreadRequests(kind).length?'<span class="unread-dot" role="img" aria-label="มีคำขอยังไม่ได้อ่าน"></span>':''}
+function unreadRequests(kind){if(state.personal||!['hr','admin'].includes(state.role))return [];const ids=readRequestIds();return (requestCache.get(requestScope())?.rows||[]).filter(r=>r.id&&r.unread!==false&&requestCategory(r)===kind&&!ids.has(requestKey(r)))}
+function requestBadge(page){const kind=page==='employees'?'registration':page==='leave'?'leave':page==='clock-approvals'?'correction':null;return kind&&unreadRequests(kind).length?'<span class="unread-dot" role="img" aria-label="มีคำขอยังไม่ได้อ่าน"></span>':''}
 function requestCategory(r){return r.kind==='overtime'?'correction':r.kind}
 function combineQueues(a,b){return {rows:[...(a.rows||[]),...(b.rows||[])].sort((x,y)=>String(y.created_at).localeCompare(String(x.created_at))),warnings:[...(a.warnings||[]),...(b.warnings||[])]}}
 function overtimeState(r){return r.settlement_state==='READY'?`${r.status==='APPROVED'?'ใช้ชดแล้ว':'ชดได้'} ${hours(Number(r.minutes)/60)} · ยังขาด ${hours(Number(r.remaining_short_minutes||0)/60)}`:r.settlement_state==='SCHEDULE_CHANGED'?'ตารางงานเปลี่ยน กรุณาให้ HR ตรวจสอบ':r.settlement_state==='INACTIVE'?'ไม่ได้ใช้ชั่วโมง':'รอตรวจเวลาครบทั้งสองวัน'}
@@ -241,7 +283,7 @@ function overtimeDetails(r,label=r.status==='APPROVED'?'ใช้ชดแล้
 function overtimeDescription(r){return `${r.mode==='USE_PRIOR'?'ใช้ชั่วโมงเกิน':'ชดชั่วโมงขาด'} ${esc(overtimeState(r))} · ${esc(r.source_date||'—')} → ${esc(r.target_date||'—')}`}
 async function requestQueue(){
  const scope=requestScope(),version=(queueVersions.get(scope)||0)+1;queueVersions.set(scope,version);
- try{const [regular,ot]=await Promise.all([api('staging_request_queue'),api('staging_ot_queue')]);const data=combineQueues(regular,ot);data.rows=data.rows.filter(r=>(!r.status||r.status==='PENDING')&&!settledRequests.get(scope)?.has(requestKey(r)));if(version!==queueVersions.get(scope))return requestCache.get(scope)||{rows:[],warnings:[]};if(scope&&scope===requestScope()){requestCache.set(scope,data);navigation()}return data}
+ try{const [regular,ot,people]=await Promise.all([api('staging_request_queue'),api('staging_ot_queue'),api('staging_people_list')]);const data=combineQueues(regular,ot);data.rows.push(...(people.registrations||[]).map(r=>({...r,kind:'registration',employee:{name:r.name},reason:'รอ HR กรอกข้อมูลพนักงาน'})));data.rows=data.rows.filter(r=>(!r.status||r.status==='PENDING')&&!settledRequests.get(scope)?.has(requestKey(r)));if(version!==queueVersions.get(scope))return requestCache.get(scope)||{rows:[],warnings:[]};if(scope&&scope===requestScope()){requestCache.set(scope,data);navigation()}return data}
  catch(error){return {rows:[],warnings:[['STAGING_READ_ONLY','UNKNOWN_ACTION'].includes(error.message)?'รายการคำขอยังรอเปิดบริการอ่านข้อมูล':'โหลดคำขอไม่สำเร็จ: '+errorMessage(error)]}}
 }
 async function refreshRequestNotifications(){
@@ -254,7 +296,7 @@ async function refreshRequestNotifications(){
   }else if(['admin','hr'].includes(state.role)){
    const scope=requestScope(),before=JSON.stringify(requestCache.get(scope)?.rows),version=renderVersion;
    const data=await requestQueue();
-   if(version===renderVersion&&scope===requestScope()&&!data.warnings?.length&&before!==JSON.stringify(data.rows)&&['dashboard','clock-approvals','leave'].includes(state.page)&&!$('#actionDialog').open)await render();
+   if(version===renderVersion&&scope===requestScope()&&!data.warnings?.length&&before!==JSON.stringify(data.rows)&&['dashboard','clock-approvals','leave','employees'].includes(state.page)&&!$('#actionDialog').open)await render();
   }
  }catch{/* Keep existing history and typed forms when background refresh fails. */}
  finally{refreshRequestNotifications.busy=false}
@@ -262,6 +304,7 @@ async function refreshRequestNotifications(){
 function openRequest(key){
  const r=(requestCache.get(requestScope())?.rows||[]).find(r=>requestKey(r)===key);
  if(!r||state.personal||!['admin','hr'].includes(state.role))return;
+ if(r.kind==='registration'){personnelEditor({registrationId:r.id});return}
  $('#actionTitle').textContent=r.kind==='leave'?'คำขอลา':r.kind==='overtime'?'ใช้โอที':'คำขอลงเวลา';
  $('#actionBody').innerHTML=`<h2>${esc(person(r.employee))}</h2><p>วันที่ ${esc(r.leave_date||r.work_date||'—')}</p><p>${r.kind==='overtime'?overtimeDescription(r):esc(r.kind==='leave'?leaveDescription(r):userLabel(r.requested_event_type))}</p>${r.kind==='overtime'?overtimeDetails(r):''}${r.requested_event_at?`<p>เวลาที่ขอ ${time(r.requested_event_at)}</p>`:''}<p class="request-reason">เหตุผล : ${esc(r.reason||'ไม่ระบุเหตุผล')}</p><p>คำขอทดลอง · การอนุมัติไม่แก้ข้อมูลลงเวลาเดิม</p><label class="field rejection-field" id="rejectionField" hidden>เหตุผลที่ปฏิเสธ<textarea id="reviewReason" maxlength="1000"></textarea></label><div class="request-shortcuts"><button class="btn primary" data-review-kind="${esc(r.kind)}" data-review-id="${esc(r.id)}" data-decision="APPROVED">อนุมัติทดลอง</button><button class="btn secondary" data-review-kind="${esc(r.kind)}" data-review-id="${esc(r.id)}" data-decision="REJECTED">ปฏิเสธ</button></div>`;
  $('#actionDialog').showModal();
@@ -272,7 +315,7 @@ function openRequest(key){
 function requestList(data,limit=1000){
  const rows=data.rows||[],warnings=data.warnings||[];
  return warnings.map(w=>`<p class="report-warning">${esc(w)}</p>`).join('')+
- (rows.length?rows.slice(0,limit).map(r=>`<article class="request-item"><div><strong>${esc(person(r.employee))}</strong><span class="attendance-tag">รออนุมัติ</span></div><p>${r.kind==='leave'?esc(leaveDescription(r)):r.kind==='overtime'?'ใช้โอที':'ขอแก้เวลา'} · ${esc(r.leave_date||r.work_date||'—')}</p><p class="request-reason">เหตุผล : ${esc(r.reason||'ไม่ระบุเหตุผล')}</p><small>ส่ง ${r.created_at?esc(displayDate(dateKey(new Date(r.created_at)))+' '+time(r.created_at)):'—'}</small>${r.id?`<button class="btn secondary ${readRequestIds().has(requestKey(r))?'':'request-unread'}" data-request-key="${esc(requestKey(r))}"><span class="request-read-label">${readRequestIds().has(requestKey(r))?'อ่านแล้ว':'เปิดอ่านคำขอ'}</span></button>`:''}</article>`).join(''):warnings.length?'':empty('ไม่มีคำขอรออนุมัติ'))+
+ (rows.length?rows.slice(0,limit).map(r=>`<article class="request-item"><div><strong>${esc(person(r.employee))}</strong><span class="attendance-tag">รออนุมัติ</span></div><p>${r.kind==='registration'?'สมัครพนักงานใหม่':r.kind==='leave'?esc(leaveDescription(r)):r.kind==='overtime'?'ใช้โอที':'ขอแก้เวลา'} · ${esc(r.leave_date||r.work_date||'—')}</p><p class="request-reason">เหตุผล : ${esc(r.reason||'ไม่ระบุเหตุผล')}</p><small>ส่ง ${r.created_at?esc(displayDate(dateKey(new Date(r.created_at)))+' '+time(r.created_at)):'—'}</small>${r.id?`<button class="btn secondary ${(r.unread===false||readRequestIds().has(requestKey(r)))?'':'request-unread'}" data-request-key="${esc(requestKey(r))}"><span class="request-read-label">${(r.unread===false||readRequestIds().has(requestKey(r)))?'อ่านแล้ว':'เปิดอ่านคำขอ'}</span></button>`:''}</article>`).join(''):warnings.length?'':empty('ไม่มีคำขอรออนุมัติ'))+
  (rows.length>limit?`<p class="panel-sub">แสดง ${limit} จาก ${rows.length} รายการที่โหลด</p>`:'');
 }
 async function requestsView(kind){
@@ -349,6 +392,8 @@ function profileFields(data){
  return [['รหัสพนักงาน',e.employee_code],['ชื่อ',e.name],['สถานะ',e.active===true?'ใช้งานอยู่':e.active===false?'ปิดใช้งาน':'ไม่ระบุ'],['รูปแบบลงเวลา',userLabel(e.attendance_mode)],['LINE User ID',Object.prototype.hasOwnProperty.call(e,'line_user_id')?(e.line_user_id||'ยังไม่ผูก LINE'):'ยังไม่เชื่อมข้อมูล LINE User ID'],['สำนักงาน',data.office?.name||e.default_office_id||e.office_id||'ไม่ระบุ'],['วันหยุดประจำสัปดาห์',dayoff],['แผนก',e.department],['ตำแหน่ง',e.position],['โทรศัพท์',e.phone],['อีเมล',e.email]].map(([label,value])=>`<div class="profile-field"><dt>${label}</dt><dd>${esc(value??'ไม่ระบุ')}</dd></div>`).join('');
 }
 async function showProfile(id){
+ const staged=(state.peopleRows||[]).find(e=>e.id===id);
+ if(staged?.sandbox_new||staged?.sandbox_profile){try{const d=await api('staging_people_get',personnelTarget(id));$('#actionTitle').textContent='ข้อมูลพนักงาน · ชุดทดลอง';$('#actionBody').innerHTML='<dl class="employee-profile">'+profileFields({employee:{...staged,...d.profile,id,line_user_id:d.line_user_id}})+'</dl>';$('#actionDialog').showModal()}catch(e){toast(peopleError(e))}return}
  const version=renderVersion;
  try{let d;try{d=await api('admin_employee_profile',{employeeId:id})}catch(error){if(!['STAGING_READ_ONLY','UNKNOWN_ACTION'].includes(error.message))throw error;const employee=state.directory?.employees.find(e=>e.id===id);if(!employee)throw error;d={employee,pending:true}}if(version!==renderVersion)return;$('#actionTitle').textContent='ข้อมูลพนักงาน';$('#actionBody').innerHTML=`${d.pending?'<p class="report-warning">ข้อมูลเพิ่มเติมของพนักงานยังรอเปิดบริการอ่านข้อมูล</p>':''}<dl class="employee-profile">${profileFields(d)}</dl>`;$('#actionDialog').showModal()}catch(error){toast(errorMessage(error))}
 }
@@ -359,6 +404,9 @@ async function showEmployee(id){
 }
 document.addEventListener('click',e=>{
  const b=e.target.closest('button');if(!b||b.disabled)return;
+ if(b.dataset.addPersonnel!==undefined){personnelEditor();return}
+ if(b.dataset.editPersonnel){personnelEditor(personnelTarget(b.dataset.editPersonnel));return}
+ if(b.dataset.registration){personnelEditor({registrationId:b.dataset.registration});return}
  if(b.dataset.rolePreview){showRolePreview(b.dataset.rolePreview);return}
  if(b.dataset.otBalance!==undefined){loadOvertimeBalance(b);return}
  if(b.dataset.sendDraft){sendDraft(b);return}
@@ -383,9 +431,11 @@ document.addEventListener('click',e=>{
  if(b.dataset.action==='personal-leave'){state.personal=true;state.page='my-leave';render();return}
  if(b.dataset.action==='print')window.print();
 });
-document.addEventListener('input',e=>{if(e.target.id==='employeeSearch'){const query=e.target.value.toLowerCase();$('#employeeResults').innerHTML=employeeRows(state.directory.employees.filter(p=>person(p).toLowerCase().includes(query)))}});
+document.addEventListener('input',e=>{if(e.target.id==='employeeSearch'){const query=e.target.value.toLowerCase();$('#employeeResults').innerHTML=employeeRows((state.peopleRows||state.directory.employees).filter(p=>person(p).toLowerCase().includes(query)))}});
 document.addEventListener('change',e=>{if(e.target.closest?.('#overtimeForm')&&['mode','date'].includes(e.target.name))loadOvertimeBalance($('#overtimeForm [data-ot-balance]'));if(e.target.id==='reportScope'){state.reportScope=e.target.value;state.reportEmployee='';state.directory=null;render()}if(e.target.id==='reportEmployee'){state.reportEmployee=e.target.value;render()}if(e.target.id==='workDate'&&e.target.value){state.date=e.target.value;state.selected=state.date;state.month=state.date.slice(0,7);render()}if(e.target.id==='month'&&e.target.value){state.month=e.target.value;state.selected=state.month+'-01';if(state.page==='schedule')state.date=state.selected;render()}if(e.target.id==='reportType'){state.reportType=e.target.value;render()}if(e.target.id==='leaveDuration')$('#halfDayRule').hidden=e.target.value==='FULL_DAY'});
 document.addEventListener('submit',e=>{
+ if(e.target.id==='signupForm'){e.preventDefault();submitSignup(e.target);return}
+ if(e.target.id==='personnelForm'){e.preventDefault();savePersonnel(e.target);return}
  if(!['leaveForm','correctionForm','overtimeForm'].includes(e.target.id))return;e.preventDefault();
  if(!state.boot?.employee){toast('บัญชีนี้ยังไม่ผูกกับพนักงาน');return}
  const form=e.target,data=Object.fromEntries(new FormData(form));if(!data.reason.trim()){toast('กรุณาระบุเหตุผล');return}

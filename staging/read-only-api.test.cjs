@@ -104,3 +104,11 @@ test('off and current-break counts exclude returned and checked-out employees',a
  const r=await request('admin_daily','ADMIN',{date:day},false,extras);
  assert.equal(r.data.summary.on_break,2);assert.equal(r.data.summary.off,1);assert.equal(r.data.summary.leave,1);assert.equal(r.data.summary.not_checked_in,1);assert.equal(r.writes,0);
 });
+test('personnel route always uses verified LINE actor and fixed RPC operation',async()=>{
+ let call;const result=await request('staging_people_register',null,{actor:'forged',operation:'save',name:'New'},false,{rpc:async(name,args)=>{call={name,args};return {data:{ok:true},error:null}}});
+ assert.equal(result.status,200);assert.equal(call.name,'kitty_staging_personnel_v1');assert.equal(call.args.actor,'user');assert.equal(call.args.operation,'register');assert.equal(result.writes,0);
+});
+test('personnel RPC permission failures remain forbidden',async()=>{
+ const result=await request('staging_people_save','HR',{employeeId:'ba'},false,{rpc:async()=>({data:null,error:{message:'FORBIDDEN'}})});
+ assert.equal(result.status,403);assert.equal(result.data.error,'FORBIDDEN');
+});
