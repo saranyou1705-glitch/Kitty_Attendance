@@ -3,6 +3,13 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const vm=require('node:vm');
 const source=fs.readFileSync(__dirname+'/app.js','utf8').replace('navigation();init();','');
+test('real clock buttons retain design icons for enabled and disabled states',()=>{
+ const {run}=setup();run("var iconData={employee:{active:true,attendance_mode:'STANDARD'},events:[]}");
+ for(const [label,icon] of [['เข้างาน','clock'],['ออกพัก','coffee'],['กลับจากพัก','coffee'],['ออกงาน','logout']]){
+  const html=run(`clockButton('${label}',iconData)`);assert(html.includes(run(`uiIcon('${icon}')`)));assert(html.includes('<span>'+label+'</span>'));
+ }
+ run("iconData.events=[{event_type:'IN',event_at:'2026-09-24T02:00:00Z'}]");assert(!run("clockButton('ออกพัก',iconData)").includes('disabled'));assert(run("clockButton('ออกพัก',iconData)").includes('<svg'));
+});
 test('Admin event editor is present only in Admin workspace',async()=>{
  const {run,node}=setup(async()=>({ok:true,json:async()=>({ok:true,events:[{id:'event',event_type:'IN',work_date:'2026-09-24',event_at:'2026-09-24T02:30:00Z'}]})}));
  run("state.role='admin';state.date='2026-09-24'");await run("showEmployee('self')");assert(node('#actionBody').innerHTML.includes('data-admin-event="event"'));assert(node('#actionBody').innerHTML.includes('09:30'));
