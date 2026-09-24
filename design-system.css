@@ -205,3 +205,5 @@ input::-webkit-date-and-time-value{text-align:left;min-height:1.5em}
 .attendance-tag{display:inline-flex;align-items:center;justify-content:center;line-height:1.5;vertical-align:middle}
 .admin-event-form{margin-top:20px;padding-top:20px;border-top:1px solid var(--line)}
 @media(max-width:720px){.dashboard-heading .date-field{display:grid;width:100%;max-width:100%}.dashboard-heading .date-field input{max-width:100%}.cal-day{padding:6px 2px}.cal-day small{font-size:10px;overflow-wrap:anywhere}.bottom-nav.management-bottom .nav-item{min-width:0;line-height:1.5}}
+
+.request-status{display:inline-flex;align-items:center;vertical-align:middle;font-size:13px;line-height:1.5;padding:4px 10px;border-radius:999px}.request-approved{color:#9c2857;background:#fbe2ed;font-weight:600}.request-scope{display:block;color:var(--muted);font-size:12px;margin:6px 0}.ot-existing{border:1px solid var(--line);border-radius:16px;padding:16px;display:grid;gap:10px}.ot-existing .request-status{justify-self:start}
