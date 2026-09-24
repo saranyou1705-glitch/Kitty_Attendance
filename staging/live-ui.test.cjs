@@ -292,3 +292,10 @@ test('self profile retains avatar and personal details without contact fields or
  assert(node('#selfProfileButton').innerHTML.includes('https://example.com/me.jpg'));
  await run('showSelfProfile()');const html=node('#actionBody').innerHTML;assert(!html.includes('โทรศัพท์'));assert(!html.includes('อีเมล'));assert(!html.includes('0812345678'));assert(!html.includes('a@example.com'));assert(!html.includes('<form'));assert(html.includes('HO001'));assert(!html.includes('name="employee_code"'));assert.deepEqual(calls,['staging_self_profile']);
 });
+
+test('supplied logo replaces flower and appears in initial and LINE loading states',()=>{
+ const {run}=setup();const html=fs.readFileSync(__dirname+'/index.html','utf8');
+ assert(!html.includes('✿'));assert(html.includes('src="kitty-logo.png"'));assert(html.includes('class="login-loading"'));
+ assert(run('loginLoading()').includes('kitty-logo.png'));assert(source.includes("state.loginLoading?loginLoading()"));
+ assert(fs.existsSync(__dirname+'/kitty-logo.png'));
+});

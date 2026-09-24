@@ -30,6 +30,7 @@ function time(s){if(!s)return '—';const d=new Date(s);return Number.isNaN(d.ge
 function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 function hours(v){if(v===null||v===undefined||v===''||!Number.isFinite(Number(v)))return '—';const minutes=Math.round(Math.abs(Number(v))*60);return `${Number(v)<0&&minutes?'-':''}${Math.floor(minutes/60)} ชม. ${minutes%60} นาที`}
 function person(e){return `${e?.employee_code||''} · ${e?.name||'ไม่พบชื่อพนักงาน'}`}
+function loginLoading(){return '<div class="login-loading" role="status"><span class="kitty-logo"><img src="kitty-logo.png" alt="Kitty Kawaii" width="6250" height="4167"></span><p>กำลังเข้าสู่ระบบ…</p></div>'}
 function panel(s){return `<section class="panel">${s}</section>`}
 function empty(s){return `<p class="empty-day">${esc(s)}</p>`}
 function disabled(label){const icon={'เข้างาน':'clock','ออกพัก':'coffee','กลับจากพัก':'coffee','ออกงาน':'logout'}[label];return `<button class="btn secondary" disabled title="ยังไม่เปิดการบันทึกในระบบทดลอง">${icon?uiIcon(icon):''}<span>${label}</span></button>`}
@@ -60,7 +61,7 @@ function navigation(){
 }
 async function init(){
  if(location.protocol==='file:'){$('#content').innerHTML=panel('<h2>กรุณาเปิดผ่านเว็บ Staging</h2><p>LINE ไม่รองรับการเข้าสู่ระบบจากไฟล์ในเครื่อง</p><a class="btn primary" href="https://saranyou1705-glitch.github.io/Kitty_Attendance_Staging/">เปิดเว็บ Staging</a>');return}
- state.connected=false;state.boot=null;state.directory=null;renderVersion++;$('#content').innerHTML=panel('กำลังเชื่อมต่อบัญชี LINE…');$('#environmentStatus').textContent='STAGING · กำลังเชื่อมต่อ';
+ state.connected=false;state.boot=null;state.directory=null;renderVersion++;$('#content').innerHTML=loginLoading();$('#environmentStatus').textContent='STAGING · กำลังเชื่อมต่อ';
  try{
   if(!window.liff)throw new Error('โหลด LINE ไม่สำเร็จ กรุณาลองใหม่');
   await liff.init({liffId:CONFIG.liffId});
@@ -70,7 +71,7 @@ async function init(){
   state.boot=boot;state.connected=true;state.role=String(boot.adminRole).toUpperCase()==='HR'?'hr':boot.isAdmin?'admin':'employee';state.personal=false;
   if(state.role==='admin'&&new URLSearchParams(location.search).get('view')==='hr')state.role='hr';
   state.date=dateKey();state.month=state.date.slice(0,7);state.selected=state.date;state.page=state.role==='employee'?'clock':'dashboard';
-  $('#environmentStatus').textContent='STAGING · อ่านเวลาจริง · คำขอทดลอง';await render();
+  $('#environmentStatus').textContent='STAGING · อ่านเวลาจริง · คำขอทดลอง';state.loginLoading=true;try{await render()}finally{state.loginLoading=false}
  }catch(e){$('#environmentStatus').textContent='STAGING · ยังไม่เชื่อมต่อข้อมูล';$('#content').innerHTML=panel(`<h2>โหลดข้อมูลไม่ได้</h2><p>${esc(errorMessage(e))}</p><button class="btn primary" data-action="reconnect">ลองเชื่อมต่อใหม่</button><button class="btn secondary" data-action="login">เข้าสู่ระบบ LINE ใหม่</button>`)}
 }
 async function directory(){if(state.directory)return state.directory;const role=state.role;const data=await api('admin_bootstrap');if(state.role===role)state.directory=data;return data}
@@ -263,7 +264,7 @@ function managementView(){return `<div class="management-grid">${state.role==='a
 async function attendanceView(){const d=await directory();return `${dayPicker()}${panel(`<h2>เลือกพนักงานเพื่อดูเวลา</h2>${employeeRows(d.employees,true)}`)}`}
 async function render(){
  navigation();if(!state.connected)return;
- const version=++renderVersion;$('#content').innerHTML=panel('กำลังโหลดข้อมูล…');
+ const version=++renderVersion;$('#content').innerHTML=state.loginLoading?loginLoading():panel('กำลังโหลดข้อมูล…');
  const views={clock:clockView,dashboard:dashboardView,employees:employeesView,schedule:scheduleView,calendar:calendarView,reports:reportView,line:lineView,'my-leave':()=>personalRequestView('leave'),'clock-request':()=>personalRequestView('correction'),more:managementView,attendance:attendanceView,offices:async()=>{const d=await directory();return panel(table(['รหัส','สำนักงาน'],d.offices.map(o=>[o.office_code,o.name])))},leave:()=>requestsView('leave'),'clock-approvals':()=>requestsView('correction')};
  try{const html=await (views[state.page]||unavailableView)();if(version===renderVersion){$('#content').innerHTML=html+(html.includes(' disabled')?'<p class="availability-note">ปุ่มสีเทายังไม่เปิดการบันทึกใน Staging · ใช้งานผ่านระบบเดิมได้ตามปกติ</p>':'');tick();if(state.page==='clock-request'&&$('#overtimeForm')?.elements)loadOvertimeBalance($('#overtimeForm [data-ot-balance]'))}}
  catch(e){if(version===renderVersion)$('#content').innerHTML=panel(`<h2>โหลดข้อมูลไม่สำเร็จ</h2><p>${esc(errorMessage(e))}</p><button class="btn primary" data-action="retry">ลองใหม่</button>`)}
@@ -439,7 +440,7 @@ document.addEventListener('click',e=>{
  if(b.dataset.removeDraft){try{sessionStorage.setItem(draftKey(),JSON.stringify(drafts().filter(d=>d.id!==b.dataset.removeDraft)));render()}catch{toast('ไม่สามารถลบแบบร่างได้')}return}
  if(b.dataset.action==='retry'){render();return}
  if(b.dataset.action==='reconnect'){init();return}
- if(b.dataset.action==='login'){if(window.liff){if(liff.isLoggedIn())liff.logout();liff.login({redirectUri:loginRedirect()})}else location.reload();return}
+ if(b.dataset.action==='login'){$('#content').innerHTML=loginLoading();if(window.liff){if(liff.isLoggedIn())liff.logout();liff.login({redirectUri:loginRedirect()})}else location.reload();return}
  if(b.dataset.action==='personal-leave'){state.personal=true;state.page='my-leave';render();return}
  if(b.dataset.action==='print')window.print();
 });
