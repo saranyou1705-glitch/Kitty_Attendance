@@ -226,11 +226,11 @@ test('OT report counts approved ready minutes only and preserves legacy totals',
  assert.equal(result.rows[0].ot_used_hours,35/60);assert.equal(result.rows[0].makeup_hours,0);assert.equal(result.rows[0].paid_work_hours,8.4167);
  assert.equal(run("otSummary([{kind:'overtime',status:'APPROVED',settlement_state:'WAITING',minutes:null}]).hours"),null);
 });
-test('OT form distinguishes 35 minutes used from zero available for a new request',async()=>{
+test('OT form shows one approved total instead of a redundant new-request balance',async()=>{
  const {run,node}=setup(async(url)=>({ok:true,json:async()=>new URL(url).searchParams.get('action')==='staging_ot_balance'?{ok:true,settlement_state:'READY',minutes:0,available_minutes:0}:{ok:true,rows:[{id:'a',kind:'overtime',status:'APPROVED',settlement_state:'READY',mode:'USE_PRIOR',work_date:'2026-09-24',minutes:35}]}}));
  node('#overtimeForm').elements={mode:{value:'USE_PRIOR'},date:{value:'2026-09-24'}};
  await run("loadOvertimeBalance({disabled:false})");
- const html=node('#otBalance').innerHTML;assert(html.includes('ใช้ชดแล้ว · คำขอที่อนุมัติ'));assert(html.includes('0 ชม. 35 นาที'));assert(html.includes('ใช้เพิ่มได้สำหรับคำขอใหม่'));assert(html.includes('0 ชม. 0 นาที'));
+ const html=node('#otBalance').innerHTML;assert(html.includes('ใช้ชดแล้ว'));assert(html.includes('0 ชม. 35 นาที'));assert(!html.includes('ใช้เพิ่มได้สำหรับคำขอใหม่'));assert.equal((html.match(/class="ot-total"/g)||[]).length,1);
 });
 test('monthly sandbox OT is scoped separately and includes current-day approval',async()=>{
  const ids=[];const {run}=setup(async(url,options)=>{ids.push(JSON.parse(options.body).employeeId);return {ok:true,json:async()=>({ok:true,rows:[{id:'a',kind:'overtime',status:'APPROVED',settlement_state:'READY',minutes:35}]})}});

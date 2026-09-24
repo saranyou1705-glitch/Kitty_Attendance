@@ -280,7 +280,7 @@ function overtimeView(){return panel(`<h2>ใช้โอที</h2><form id="ov
 async function loadOvertimeBalance(button){
  const form=$('#overtimeForm'),mode=form.elements.mode.value,date=form.elements.date.value,version=renderVersion;
  if(!date||!button)return;button.disabled=true;$('#otBalance').textContent='กำลังตรวจชั่วโมงที่ใช้ได้…';
- try{const [data,mine]=await Promise.all([api('staging_ot_balance',{mode,date}),api('staging_ot_mine')]);const used=otSummary((mine.rows||[]).filter(r=>r.mode===mode&&r.work_date===date));if(version===renderVersion&&form.elements.mode.value===mode&&form.elements.date.value===date)$('#otBalance').innerHTML=`<div class="ot-total"><span>ใช้ชดแล้ว · คำขอที่อนุมัติ</span><strong>${esc(otSummaryLabel(used))}</strong></div>`+overtimeDetails(data,'ใช้เพิ่มได้สำหรับคำขอใหม่')}
+ try{const [data,mine]=await Promise.all([api('staging_ot_balance',{mode,date}),api('staging_ot_mine')]);const matching=(mine.rows||[]).filter(r=>r.mode===mode&&r.work_date===date);const current=matching.find(r=>r.status==='APPROVED')||matching.find(r=>r.status==='PENDING');if(version===renderVersion&&form.elements.mode.value===mode&&form.elements.date.value===date)$('#otBalance').innerHTML=overtimeDetails(current||data,current?.status==='APPROVED'?'ใช้ชดแล้ว':current?'รออนุมัติ · เวลาที่ชดได้':'ชั่วโมงที่ใช้ได้')}
  catch(error){if(version===renderVersion&&form.elements.mode.value===mode&&form.elements.date.value===date)$('#otBalance').textContent=workflowError(error)}finally{button.disabled=false}
 }
 
