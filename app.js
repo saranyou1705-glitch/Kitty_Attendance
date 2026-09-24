@@ -395,9 +395,8 @@ async function loadOvertimeBalance(button){
    if(reason){reason.disabled=!!existing;reason.closest('label').hidden=!!existing}
    if(existing){$('#otBalance').innerHTML='';return}
   }
-  if(current())$('#otBalance').innerHTML=data.settlement_state==='READY'&&Number(data.available_minutes??data.minutes)===0
-   ?'<p class="ot-empty">ไม่มีชั่วโมงที่ใช้ได้สำหรับคู่วันนี้</p>'+table(['วันทำงาน','เวลาสุทธิ','เวลาที่กำหนด'],[[data.source_date||'—',hours(data.source_paid_minutes==null?null:data.source_paid_minutes/60),hours(data.source_required_minutes==null?null:data.source_required_minutes/60)],[data.target_date||'—',hours(data.target_paid_minutes==null?null:data.target_paid_minutes/60),hours(data.target_required_minutes==null?null:data.target_required_minutes/60)]])
-   :overtimeDetails(data,'ชั่วโมงที่ใช้ได้');
+  // Keep validation and duplicate checks; balances belong outside the request form.
+  if(current())$('#otBalance').innerHTML='';
  }catch(error){if(current())$('#otBalance').textContent=workflowError(error)}finally{if(requestVersion===otBalanceVersion)button.disabled=false}
 }
 
