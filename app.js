@@ -89,19 +89,19 @@ function navigation(){
  $('#pageTitle').textContent=(state.page==='clock'?'วันทำงานของฉัน':list.find(x=>x[0]===state.page)?.[2])||'จัดการ';
 }
 async function init(){
- if(location.protocol==='file:'){$('#content').innerHTML=panel('<h2>กรุณาเปิดผ่านเว็บ Staging</h2><p>LINE ไม่รองรับการเข้าสู่ระบบจากไฟล์ในเครื่อง</p><a class="btn primary" href="https://saranyou1705-glitch.github.io/Kitty_Attendance/">เปิดเว็บ Staging</a>');return}
- state.connected=false;state.boot=null;state.directory=null;renderVersion++;$('#content').innerHTML=loginLoading();$('#environmentStatus').textContent='STAGING · กำลังเชื่อมต่อ';
+ if(location.protocol==='file:'){$('#content').innerHTML=panel('<h2>กรุณาเปิดผ่านเว็บไซต์</h2><p>LINE ไม่รองรับการเข้าสู่ระบบจากไฟล์ในเครื่อง</p><a class="btn primary" href="https://saranyou1705-glitch.github.io/Kitty_Attendance/">เปิด Kitty Attendance</a>');return}
+ state.connected=false;state.boot=null;state.directory=null;renderVersion++;$('#content').innerHTML=loginLoading();$('#environmentStatus').textContent='กำลังเชื่อมต่อ';
  try{
   if(!window.liff)throw new Error('โหลด LINE ไม่สำเร็จ กรุณาลองใหม่');
   await liff.init({liffId:CONFIG.liffId});
-  if(!liff.isLoggedIn()){$('#environmentStatus').textContent='STAGING · เข้าสู่ระบบเพื่อดูข้อมูลจริง';$('#content').innerHTML=panel('<h2>เข้าใช้งาน Kitty Attendance ผ่านเว็บ</h2><p>Admin และ HR เข้าด้วยบัญชี LINE ที่ผูกไว้กับระบบ</p><button class="btn primary" data-action="login">เข้าสู่ระบบด้วย LINE</button>');return}
+  if(!liff.isLoggedIn()){$('#environmentStatus').textContent='เข้าสู่ระบบด้วย LINE';$('#content').innerHTML=panel('<h2>เข้าใช้งาน Kitty Attendance ผ่านเว็บ</h2><p>Admin และ HR เข้าด้วยบัญชี LINE ที่ผูกไว้กับระบบ</p><button class="btn primary" data-action="login">เข้าสู่ระบบด้วย LINE</button>');return}
   const started=Date.now();const boot=await api('bootstrap');
   if(boot.serverTime){const server=Date.parse(boot.serverTime);if(Number.isFinite(server))offset=server-(started+Date.now())/2}
   state.boot=boot;state.connected=true;state.role=String(boot.adminRole).toUpperCase()==='HR'?'hr':boot.isAdmin?'admin':'employee';state.personal=false;
   if(state.role==='admin'&&new URLSearchParams(location.search).get('view')==='hr')state.role='hr';
   state.date=dateKey();state.month=state.date.slice(0,7);state.selected=state.date;state.page=CONFIG.requestsLive&&state.role==='employee'&&new URLSearchParams(location.search).get('register')==='hr'?'hr-register':state.role==='employee'?'clock':'dashboard';
   $('#environmentStatus').textContent=CONFIG.requestsLive?'ลงเวลา ลา และแก้เวลาจริง · OT/จัดการพนักงานยังทดลอง':'ลงเวลาจริง · คำขอและการจัดการยังเป็นชุดทดลอง';state.loginLoading=true;try{await render()}finally{state.loginLoading=false}
- }catch(e){$('#environmentStatus').textContent='STAGING · ยังไม่เชื่อมต่อข้อมูล';$('#content').innerHTML=panel(`<h2>โหลดข้อมูลไม่ได้</h2><p>${esc(errorMessage(e))}</p><button class="btn primary" data-action="reconnect">ลองเชื่อมต่อใหม่</button><button class="btn secondary" data-action="login">เข้าสู่ระบบ LINE ใหม่</button>`)}
+ }catch(e){$('#environmentStatus').textContent='ยังไม่เชื่อมต่อข้อมูล';$('#content').innerHTML=panel(`<h2>โหลดข้อมูลไม่ได้</h2><p>${esc(errorMessage(e))}</p><button class="btn primary" data-action="reconnect">ลองเชื่อมต่อใหม่</button><button class="btn secondary" data-action="login">เข้าสู่ระบบ LINE ใหม่</button>`)}
 }
 async function directory(){if(state.directory)return state.directory;const role=state.role;const data=await api('admin_bootstrap');if(state.role===role)state.directory=data;return data}
 function dayPicker(){return `<label class="field date-field"><span>วันที่</span><input type="date" id="workDate" value="${state.date}" required></label>`}
