@@ -44,6 +44,7 @@ async function api(action,payload={}){
 function activeMenu(){if(state.connected&&state.boot&&!state.boot?.employee&&!state.boot?.isAdmin)return [];return state.personal?menus.employee:menus[state.role]}
 function loginRedirect(){const url=new URL('https://saranyou1705-glitch.github.io/Kitty_Attendance_Staging/');if(new URLSearchParams(location.search).get('view')==='hr')url.searchParams.set('view','hr');return url.href}
 function navigation(){
+ const avatar=$('#selfProfileButton'),picture=state.boot?.profile?.pictureUrl;avatar.hidden=!state.connected||!state.boot?.employee;avatar.innerHTML=picture&&/^https:\/\//.test(picture)?`<img src="${esc(picture)}" alt="รูปโปรไฟล์ของฉัน" referrerpolicy="no-referrer">`:`<span>${esc((state.boot?.employee?.name||'ฉัน').slice(0,1))}</span>`;
  $('#pageHeader').hidden=state.connected&&['dashboard','clock'].includes(state.page);
  const list=activeMenu();const render=items=>items.map(([id,icon,label])=>`<button class="nav-item ${state.page===id?'active':''}" aria-current="${state.page===id?'page':'false'}" data-page="${id}"><span class="nav-symbol">${uiIcon(id)}${requestBadge(id)}</span><span>${label}</span></button>`).join('');
  const managementMenu=['dashboard','employees','schedule','clock-approvals','leave','reports'].map(id=>list.find(x=>x[0]===id)).filter(Boolean);
@@ -112,14 +113,14 @@ function dailyTable(rows){return table(['พนักงาน','วันที
 
 async function signupView(){
  const d=await api('staging_people_mine'),r=d.registration;
- if(r)return panel(`<h2>${r.status==='READY'?'HR กรอกข้อมูลแล้ว':'ส่งชื่อให้ HR แล้ว'}</h2><p>${esc(r.name)}</p><p>${r.status==='READY'?'ข้อมูลอยู่ในชุดทดลอง รอเปิดใช้งานจริง':'รอ HR ตรวจสอบและเติมข้อมูลพนักงาน'}</p><button class="btn secondary" data-action="retry">ตรวจสถานะ</button>`);
+ if(r)return panel(`<h2>${r.status==='READY'?'HR อนุมัติแล้ว':'ส่งชื่อให้ HR แล้ว'}</h2><p>${esc(r.name)}</p><p>${r.status==='READY'?'ข้อมูลอยู่ในชุดทดลอง รอเปิดใช้งานจริง':'รอ HR ตรวจสอบและเติมข้อมูลพนักงาน'}</p><button class="btn secondary" data-action="retry">ตรวจสถานะ</button>`);
  return panel('<h2>ลงทะเบียนพนักงานใหม่</h2><form id="signupForm" class="request-form"><label>ชื่อ–นามสกุล<input name="name" maxlength="160" required autocomplete="name"></label><p>ส่งให้ HR Head Office กรอกข้อมูลส่วนที่เหลือ · ชุดทดลอง</p><button class="btn primary" type="submit">ส่งชื่อให้ HR</button></form>');
 }
 async function submitSignup(form){
  const button=form.querySelector('button');button.disabled=true;
  try{await api('staging_people_register',{name:new FormData(form).get('name')});await render()}catch(e){toast(peopleError(e))}finally{button.disabled=false}
 }
-function peopleError(e){return ({STALE_PROFILE:'มีการบันทึกข้อมูลนี้แล้ว กรุณาปิดและเปิดใหม่',DUPLICATE_CODE:'รหัสพนักงานนี้มีอยู่แล้ว',INVALID_NAME:'กรุณากรอกชื่อไม่เกิน 160 ตัวอักษร',INVALID_DAYOFF:'กรุณาเลือกวันหยุดจากช่องที่กำหนด',HO_ONLY:'เพิ่มพนักงานใหม่ได้เฉพาะ Head Office ในชุดทดลอง',CODE_IMMUTABLE:'ยังไม่เปิดให้เปลี่ยนรหัสพนักงานเดิม',ALREADY_EMPLOYEE:'บัญชีนี้มีข้อมูลพนักงานแล้ว',INVALID_REQUEST:'กรุณาตรวจชื่อและรหัสพนักงาน',PERSONNEL_SERVICE_ERROR:'บันทึกข้อมูลพนักงานไม่สำเร็จ กรุณาลองใหม่'})[e.message]||workflowError(e)}
+function peopleError(e){return ({REGISTRATION_REQUIRED:'ต้องรอคำขอจากบัญชี LINE ของพนักงานใหม่',APPROVAL_REQUIRED:'กรุณายืนยันอนุมัติพนักงานใหม่',INVALID_FIELDS:'แก้ไขได้เฉพาะโทรศัพท์และอีเมล',INVALID_PHONE:'กรุณาตรวจสอบเบอร์โทรศัพท์',INVALID_EMAIL:'กรุณาตรวจสอบอีเมล',STALE_PROFILE:'มีการบันทึกข้อมูลนี้แล้ว กรุณาปิดและเปิดใหม่',DUPLICATE_CODE:'รหัสพนักงานนี้มีอยู่แล้ว',INVALID_NAME:'กรุณากรอกชื่อไม่เกิน 160 ตัวอักษร',INVALID_DAYOFF:'กรุณาเลือกวันหยุดจากช่องที่กำหนด',HO_ONLY:'เพิ่มพนักงานใหม่ได้เฉพาะ Head Office ในชุดทดลอง',CODE_IMMUTABLE:'ยังไม่เปิดให้เปลี่ยนรหัสพนักงานเดิม',ALREADY_EMPLOYEE:'บัญชีนี้มีข้อมูลพนักงานแล้ว',INVALID_REQUEST:'กรุณาตรวจชื่อและรหัสพนักงาน',PERSONNEL_SERVICE_ERROR:'บันทึกข้อมูลพนักงานไม่สำเร็จ กรุณาลองใหม่'})[e.message]||workflowError(e)}
 function personnelTarget(id){const row=(state.peopleRows||[]).find(e=>e.id===id);return row?.sandbox_new?{profileId:row.id}:{employeeId:id}}
 async function loadPeople(){
  const [d,p]=await Promise.all([directory(),api('staging_people_list')]);
@@ -129,14 +130,15 @@ async function loadPeople(){
 }
 async function personnelEditor(target={}){
  if(!['admin','hr'].includes(state.role)||state.personal)return;
+ if(state.role==='hr'&&!target.employeeId&&!target.profileId&&!target.registrationId)return;
  try{
   const d=await api('staging_people_get',target),p=d.profile||{};
-  const context={...target,profileId:p.id||target.profileId||crypto.randomUUID(),version:p.version||0};
+  const context={...target,profileId:p.id||target.profileId||crypto.randomUUID(),version:p.version||0,...(target.registrationId?{approveRegistration:true}:{})};
   if(target.employeeId)delete context.profileId;
   state.personnelEdit=context;
   const weekdays=['MON','TUE','WED','THU','FRI','SAT','SUN'];
   $('#actionTitle').textContent=target.registrationId?'เติมข้อมูลพนักงานใหม่':target.employeeId||p.id?'แก้ไขข้อมูลพนักงาน':'เพิ่มพนักงาน Head Office';
-  $('#actionBody').innerHTML=`<form id="personnelForm" class="request-form"><label>ชื่อ–นามสกุล<input name="name" value="${esc(p.name||'')}" maxlength="160" required></label><label>รหัสพนักงาน<input name="employee_code" value="${esc(p.employee_code||'')}" placeholder="HO027" ${p.employee_id||p.id?'readonly':''} pattern="[A-Za-z]{2,8}[0-9]{1,8}" required></label><label>แผนก<input name="department" value="${esc(p.department||'')}" maxlength="160"></label><label>ตำแหน่ง<input name="position" value="${esc(p.position||'')}" maxlength="160"></label><label>วันที่เริ่มงาน<input type="date" name="start_date" value="${esc(p.start_date||'')}"></label><fieldset class="weekly-dayoffs"><legend>วันหยุดประจำสัปดาห์</legend>${weekdays.map(day=>`<label><input type="checkbox" name="weekly_dayoffs" value="${day}" ${(p.weekly_dayoffs||[]).includes(day)?'checked':''}><span>${userLabel(day)}</span></label>`).join('')}</fieldset>${d.line_user_id?`<p>LINE User ID : ${esc(d.line_user_id)}</p>`:''}<p class="panel-sub">บันทึกในชุดทดลอง ไม่เปลี่ยนบัญชี สิทธิ์ หรือตารางงานระบบเดิม</p><button type="submit" class="btn primary">บันทึกข้อมูลทดลอง</button></form>`;
+  $('#actionBody').innerHTML=`<form id="personnelForm" class="request-form"><label>ชื่อ–นามสกุล<input name="name" value="${esc(p.name||'')}" maxlength="160" required></label><label>รหัสพนักงาน<input name="employee_code" value="${esc(p.employee_code||'')}" placeholder="HO027" ${p.employee_id||p.id?'readonly':''} pattern="[A-Za-z]{2,8}[0-9]{1,8}" required></label><label>แผนก<input name="department" value="${esc(p.department||'')}" maxlength="160"></label><label>ตำแหน่ง<input name="position" value="${esc(p.position||'')}" maxlength="160"></label><label>วันที่เริ่มงาน<input type="date" name="start_date" value="${esc(p.start_date||'')}"></label><fieldset class="weekly-dayoffs"><legend>วันหยุดประจำสัปดาห์</legend>${weekdays.map(day=>`<label><input type="checkbox" name="weekly_dayoffs" value="${day}" ${(p.weekly_dayoffs||[]).includes(day)?'checked':''}><span>${userLabel(day)}</span></label>`).join('')}</fieldset>${d.line_user_id?`<p>LINE User ID : ${esc(d.line_user_id)}</p>`:''}<p class="panel-sub">บันทึกในชุดทดลอง ไม่เปลี่ยนบัญชี สิทธิ์ หรือตารางงานระบบเดิม</p><button type="submit" class="btn primary">${target.registrationId?'บันทึกและอนุมัติพนักงานใหม่':'บันทึกข้อมูลทดลอง'}</button></form>`;
   $('#actionDialog').showModal();
   if(target.registrationId){await api('staging_people_read',{registrationId:target.registrationId});await requestQueue()}
  }catch(e){toast(peopleError(e))}
@@ -150,7 +152,7 @@ async function savePersonnel(form){
 function filteredPeople(){const scope=state.employeeScope||'active',query=(state.employeeSearch||'').trim().toLowerCase();return (state.peopleRows||[]).filter(e=>(scope==='all'||(scope==='inactive'?e.active===false:e.active===true))&&person(e).toLowerCase().includes(query))}
 async function employeesView(){
  const d=await loadPeople();
- return panel(`<div class="section-heading"><h2>พนักงาน</h2><button class="btn primary" data-add-personnel>เพิ่มพนักงาน</button></div><p class="panel-sub">ข้อมูลที่แก้ไขและพนักงานใหม่บันทึกเฉพาะชุดทดลอง</p>${d.registrations.length?`<h3>พนักงานใหม่รอเติมข้อมูล</h3>${d.registrations.map(r=>`<div class="employee-row"><strong>${esc(r.name)}</strong><button class="btn secondary ${r.unread?'request-unread':''}" data-registration="${esc(r.id)}">เปิดอ่าน / เติมข้อมูล</button></div>`).join('')}`:''}<div class="employee-filters"><label class="field">ค้นหาพนักงาน<input id="employeeSearch" type="search" placeholder="ชื่อหรือรหัส" value="${esc(state.employeeSearch||'')}"></label><label class="field">สถานะ<select id="employeeScope">${[['active','ใช้งานอยู่'],['inactive','ปิดใช้งาน'],['all','ทั้งหมด']].map(([v,label])=>`<option value="${v}" ${(state.employeeScope||'active')===v?'selected':''}>${label}</option>`).join('')}</select></label></div><div id="employeeResults">${employeeRows(filteredPeople())}</div>`);
+ return panel(`<div class="section-heading"><h2>พนักงาน</h2>${state.role==='admin'?'<button class="btn primary" data-add-personnel>เพิ่มพนักงาน</button>':''}</div><p class="panel-sub">ข้อมูลที่แก้ไขและพนักงานใหม่บันทึกเฉพาะชุดทดลอง</p>${d.registrations.length?`<h3>พนักงานใหม่รอเติมข้อมูล</h3>${d.registrations.map(r=>`<div class="employee-row"><strong>${esc(r.name)}</strong><button class="btn secondary ${r.unread?'request-unread':''}" data-registration="${esc(r.id)}">เปิดอ่าน / เติมข้อมูล</button></div>`).join('')}`:''}<div class="employee-filters"><label class="field">ค้นหาพนักงาน<input id="employeeSearch" type="search" placeholder="ชื่อหรือรหัส" value="${esc(state.employeeSearch||'')}"></label><label class="field">สถานะ<select id="employeeScope">${[['active','ใช้งานอยู่'],['inactive','ปิดใช้งาน'],['all','ทั้งหมด']].map(([v,label])=>`<option value="${v}" ${(state.employeeScope||'active')===v?'selected':''}>${label}</option>`).join('')}</select></label></div><div id="employeeResults">${employeeRows(filteredPeople())}</div>`);
 }
 
 function employeeRows(employees,attendanceOnly=false){return (employees||[]).map(e=>`<div class="employee-row"><div><strong>${esc(person(e))}</strong><small>${esc(userLabel(e.attendance_mode))} · ${e.active?'ใช้งานอยู่':'ปิดใช้งาน'}</small></div><button class="btn secondary" ${attendanceOnly?'data-employee':'data-profile'}="${esc(e.id)}">${attendanceOnly?'ดูการลงเวลา':'ดูข้อมูล'}</button>${attendanceOnly?'':`<button class="btn secondary" data-edit-personnel="${esc(e.id)}">แก้ไข</button>`}</div>`).join('')||empty('ไม่พบพนักงาน')}
@@ -399,12 +401,25 @@ async function showProfile(id){
  try{let d;try{d=await api('admin_employee_profile',{employeeId:id})}catch(error){if(!['STAGING_READ_ONLY','UNKNOWN_ACTION'].includes(error.message))throw error;const employee=state.directory?.employees.find(e=>e.id===id);if(!employee)throw error;d={employee,pending:true}}if(version!==renderVersion)return;$('#actionTitle').textContent='ข้อมูลพนักงาน';$('#actionBody').innerHTML=`${d.pending?'<p class="report-warning">ข้อมูลเพิ่มเติมของพนักงานยังรอเปิดบริการอ่านข้อมูล</p>':''}<dl class="employee-profile">${profileFields(d)}</dl>`;$('#actionDialog').showModal()}catch(error){toast(errorMessage(error))}
 }
 
+async function showSelfProfile(){
+ try{const d=await api('staging_self_profile');state.selfProfileVersion=d.version;
+ $('#actionTitle').textContent='ข้อมูลส่วนตัวของฉัน';
+ const e=d.employee;
+ $('#actionBody').innerHTML=`<dl class="employee-profile">${profileFields({employee:e})}</dl><form id="selfContactForm" class="request-form"><label>โทรศัพท์<input type="tel" name="phone" maxlength="30" autocomplete="tel" value="${esc(e.phone||'')}"></label><label>อีเมล<input type="email" name="email" maxlength="254" autocomplete="email" value="${esc(e.email||'')}"></label><p class="panel-sub">แก้ไขได้เฉพาะโทรศัพท์และอีเมล · บันทึกในชุดทดลอง</p><button type="submit" class="btn primary">บันทึก</button></form>`;
+ $('#actionDialog').showModal();
+ }catch(e){toast(peopleError(e))}
+}
+async function saveSelfContact(form){
+ const button=form.querySelector('button[type="submit"]'),fd=new FormData(form);button.disabled=true;
+ try{await api('staging_self_profile_save',{phone:fd.get('phone'),email:fd.get('email'),version:state.selfProfileVersion});$('#actionDialog').close();toast('บันทึกข้อมูลติดต่อในชุดทดลองแล้ว')}catch(e){toast(peopleError(e))}finally{button.disabled=false}
+}
 async function showEmployee(id){
  const e=state.directory?.employees.find(e=>e.id===id);const version=renderVersion;
  try{const d=await api('admin_employee_day',{employeeId:id,date:state.date});if(version!==renderVersion)return;$('#actionTitle').textContent=e?person(e):'การลงเวลาพนักงาน';$('#actionBody').innerHTML=`<p>${displayDate(state.date)}</p>${eventsTable(d.events)}<p>สถานะตาราง: ${esc(scheduleLabel(d.schedule?.schedule_status))}</p><p>ชั่วโมงทำงาน: ${hours(d.daily?.paid_work_hours)}</p>`;$('#actionDialog').showModal()}catch(e){toast(errorMessage(e))}
 }
 document.addEventListener('click',e=>{
  const b=e.target.closest('button');if(!b||b.disabled)return;
+ if(b.id==='selfProfileButton'){showSelfProfile();return}
  if(b.dataset.addPersonnel!==undefined){personnelEditor();return}
  if(b.dataset.editPersonnel){personnelEditor(personnelTarget(b.dataset.editPersonnel));return}
  if(b.dataset.registration){personnelEditor({registrationId:b.dataset.registration});return}
@@ -435,6 +450,7 @@ document.addEventListener('click',e=>{
 document.addEventListener('input',e=>{if(e.target.id==='employeeSearch'){state.employeeSearch=e.target.value;$('#employeeResults').innerHTML=employeeRows(filteredPeople())}});
 document.addEventListener('change',e=>{if(e.target.id==='employeeScope'){state.employeeScope=e.target.value;$('#employeeResults').innerHTML=employeeRows(filteredPeople())}if(e.target.closest?.('#overtimeForm')&&['mode','date'].includes(e.target.name))loadOvertimeBalance($('#overtimeForm [data-ot-balance]'));if(e.target.id==='reportScope'){state.reportScope=e.target.value;state.reportEmployee='';state.directory=null;render()}if(e.target.id==='reportEmployee'){state.reportEmployee=e.target.value;render()}if(e.target.id==='workDate'&&e.target.value){state.date=e.target.value;state.selected=state.date;state.month=state.date.slice(0,7);render()}if(e.target.id==='month'&&e.target.value){state.month=e.target.value;state.selected=state.month+'-01';if(state.page==='schedule')state.date=state.selected;render()}if(e.target.id==='reportType'){state.reportType=e.target.value;render()}if(e.target.id==='leaveDuration')$('#halfDayRule').hidden=e.target.value==='FULL_DAY'});
 document.addEventListener('submit',e=>{
+ if(e.target.id==='selfContactForm'){e.preventDefault();saveSelfContact(e.target);return}
  if(e.target.id==='signupForm'){e.preventDefault();submitSignup(e.target);return}
  if(e.target.id==='personnelForm'){e.preventDefault();savePersonnel(e.target);return}
  if(!['leaveForm','correctionForm','overtimeForm'].includes(e.target.id))return;e.preventDefault();

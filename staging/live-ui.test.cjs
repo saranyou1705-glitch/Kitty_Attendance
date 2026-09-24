@@ -247,9 +247,9 @@ test('employee modes and branch events use readable labels without changing form
  assert(run("eventsTable([{event_type:'BRANCH_IN'}])").includes('เข้าสาขา'));assert(run("leaveView()").includes('value="FULL_DAY"'));
  assert.equal(run("scheduleLabel('SICK_LEAVE')"),'ลาป่วย');assert.equal(run("userLabel('UNRECOGNIZED_CODE')"),'ไม่ระบุ');
 });
-test('HR personnel page enables edit/add and keeps new registrations separate',async()=>{
+test('HR personnel page hides direct add and keeps registration editing',async()=>{
  const {run}=setup(async(url)=>({ok:true,json:async()=>new URL(url).searchParams.get('action')==='admin_bootstrap'?{ok:true,employees:[{id:'ho',name:'Office',employee_code:'HO001',active:true,attendance_mode:'STANDARD'}]}:{ok:true,profiles:[],registrations:[{id:'reg',name:'New Name',unread:true}]}}));
- run("state.role='hr'");const html=await run('employeesView()');assert(html.includes('data-add-personnel'));assert(html.includes('data-edit-personnel="ho"'));assert(html.includes('New Name'));assert(html.includes('data-registration="reg"'));
+ run("state.role='hr'");const html=await run('employeesView()');assert(!html.includes('data-add-personnel'));assert(html.includes('data-edit-personnel="ho"'));assert(html.includes('New Name'));assert(html.includes('data-registration="reg"'));
 });
 test('personnel editor has seven dayoff checkboxes and preserves checked days',async()=>{
  const {run,node}=setup(async()=>({ok:true,json:async()=>({ok:true,profile:{employee_id:'ho',employee_code:'HO001',name:'Name',weekly_dayoffs:['MON','SUN'],version:0}})}));
@@ -279,4 +279,16 @@ test('employee status defaults active and composes with search without changing 
 test('explicit empty weekly days are explained rather than blank',()=>{
  const {run}=setup();assert(run("profileFields({employee:{weekly_dayoffs:[]}})").includes('ไม่ได้กำหนดวันหยุดประจำสัปดาห์'));
  const css=fs.readFileSync(__dirname+'/design-system.css','utf8');assert(css.includes('flex:0 0 20px'));assert(css.includes('grid-template-columns:repeat(auto-fit,minmax(120px,1fr))'));
+});
+
+test('HR cannot open a blank personnel editor and approval is explicit',async()=>{
+ let calls=0;const {run,node}=setup(async()=>{calls++;return {ok:true,json:async()=>({ok:true,profile:{name:'New',version:0},line_user_id:'verified-line'})}});
+ run("state.role='hr'");await run('personnelEditor()');assert.equal(calls,0);
+ await run("personnelEditor({registrationId:'r'})");assert(node('#actionBody').innerHTML.includes('บันทึกและอนุมัติพนักงานใหม่'));assert.equal(run('state.personnelEdit.approveRegistration'),true);
+});
+test('self profile avatar uses LINE picture and own form edits only contact fields',async()=>{
+ const calls=[];const {run,node}=setup(async(url)=>{calls.push(new URL(url).searchParams.get('action'));return {ok:true,json:async()=>({ok:true,version:2,employee:{name:'Me',employee_code:'HO001',phone:'0812345678',email:'a@example.com',weekly_dayoffs:[]}})}});
+ run("state.connected=true;state.boot={employee:{name:'Me'},profile:{pictureUrl:'https://example.com/me.jpg'}};navigation()");
+ assert(node('#selfProfileButton').innerHTML.includes('https://example.com/me.jpg'));
+ await run('showSelfProfile()');const html=node('#actionBody').innerHTML;assert(html.includes('name="phone"'));assert(html.includes('name="email"'));assert(!html.includes('name="employee_code"'));assert.deepEqual(calls,['staging_self_profile']);
 });

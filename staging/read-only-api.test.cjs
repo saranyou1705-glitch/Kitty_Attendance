@@ -122,3 +122,8 @@ test('personnel editor reads original ISO weekdays only after authorized RPC and
  const failure=await request('staging_people_get','HR',{employeeId:'ho'},false,{errors:{employee_weekly_dayoffs:{message:'unavailable'}},rpc:()=>({data:{ok:true,profile:{employee_id:'ho'}}})});
  assert.notEqual(failure.status,200);
 });
+
+test('self contact endpoint uses verified actor and a fixed self-service RPC',async()=>{
+ let call;const r=await request('staging_self_profile_save',null,{employeeId:'victim',phone:'0812345678',email:'x@example.com',version:0},false,{rpc:(name,args)=>{call={name,args};return {error:{message:'INVALID_FIELDS'}}}});
+ assert.equal(call.name,'kitty_staging_self_profile_v1');assert.equal(call.args.actor,'user');assert.equal(r.data.error,'INVALID_FIELDS');assert.equal(r.status,400);
+});

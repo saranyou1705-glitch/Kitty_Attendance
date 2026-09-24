@@ -143,3 +143,9 @@ button,input,select,textarea{letter-spacing:normal;line-height:1.5}h1,h2,h3,.bra
 .request-form .weekly-dayoffs input[type=checkbox]{appearance:auto;display:block;flex:0 0 20px;width:20px;max-width:20px;height:20px;min-height:20px;margin:0;padding:0;accent-color:var(--pink-ink)}
 
 .employee-filters{display:grid;grid-template-columns:minmax(0,2fr) minmax(120px,1fr);gap:16px;align-items:end}.employee-filters .field{min-width:0}.employee-filters input,.employee-filters select{width:100%;min-height:44px;box-sizing:border-box}
+
+.app-chrome{position:relative;padding-right:56px}
+.self-profile-button{position:absolute;right:0;top:0;width:44px;height:44px;border:2px solid #f4c6d9;border-radius:50%;padding:0;overflow:hidden;background:#fce8f0;color:var(--ink);display:grid;place-items:center;cursor:pointer;flex-shrink:0}
+.self-profile-button[hidden]{display:none}
+.self-profile-button img{display:block;width:100%;height:100%;object-fit:cover}
+.self-profile-button:focus-visible{outline:3px solid var(--pink-ink);outline-offset:3px}
