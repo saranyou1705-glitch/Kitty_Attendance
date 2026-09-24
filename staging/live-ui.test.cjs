@@ -202,3 +202,21 @@ test('own correction history also displays submitted OT requests',async()=>{
  const html=await run("personalRequestView('correction')");assert(html.includes('เหตุผล : OT reason'));
  assert(source.includes("loadOvertimeBalance($('#overtimeForm [data-ot-balance]'))"));
 });
+test('late queue response cannot restore an approved request',async()=>{
+ const pending=[];const {run}=setup((url)=>new Promise(resolve=>pending.push({url,resolve})));
+ run("state.role='hr';state.boot={profile:{userId:'hr'}};requestCache.set(requestScope(),{rows:[{id:'ot',kind:'overtime',status:'PENDING'}]})");
+ const loading=run('requestQueue()');
+ run("invalidateReviewedRequest('overtime','ot')");
+ for(const p of pending)p.resolve({ok:true,json:async()=>({ok:true,rows:p.url.includes('staging_ot_queue')?[{id:'ot',kind:'overtime',status:'PENDING'}]:[]})});
+ const data=await loading;assert.equal(data.rows.length,0);assert.equal(run('requestCache.get(requestScope()).rows.length'),0);
+});
+test('completed requests are retained only in collapsed history',()=>{
+ const {run}=setup();const html=run("personalHistory([{id:'one',kind:'overtime',status:'APPROVED',reason:'approved history'},{id:'two',kind:'overtime',status:'PENDING',reason:'pending request'}])");
+ assert(html.indexOf('pending request')<html.indexOf('<details'));assert(html.indexOf('approved history')>html.indexOf('<details'));assert(!html.includes('<details open'));assert(html.includes('อนุมัติทดลอง'));
+});
+test('personal background refresh updates history without replacing typed form',async()=>{
+ const {run,node}=setup(async()=>({ok:true,json:async()=>({ok:true,rows:[]})}));
+ run("state.connected=true;state.role='employee';state.page='clock-request';state.boot={employee:{id:'self'}}");
+ node('#content').innerHTML='typed form stays';node('#personalRequestHistory').innerHTML='old request';
+ await run('refreshRequestNotifications()');assert.equal(node('#content').innerHTML,'typed form stays');assert(!node('#personalRequestHistory').innerHTML.includes('old request'));
+});

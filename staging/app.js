@@ -202,7 +202,8 @@ function tick(){document.querySelectorAll('[data-clock]').forEach(el=>el.textCon
 function toast(text){$('#toast').textContent=text;$('#toast').classList.add('show');clearTimeout(toast.timer);toast.timer=setTimeout(()=>$('#toast').classList.remove('show'),4000)}
 
 
-const requestCache=new Map(),readMemory=new Map();
+const requestCache=new Map(),readMemory=new Map(),queueVersions=new Map(),settledRequests=new Map();
+function invalidateReviewedRequest(kind,id){const scope=requestScope();queueVersions.set(scope,(queueVersions.get(scope)||0)+1);const ids=settledRequests.get(scope)||new Set();ids.add(kind+':'+id);settledRequests.set(scope,ids);const cached=requestCache.get(scope);if(cached)requestCache.set(scope,{...cached,rows:cached.rows.filter(r=>!ids.has(requestKey(r)))});navigation()}
 function requestScope(){return state.boot?.profile?.userId ? 'kitty-request-read:'+state.boot.profile.userId+':'+state.role : null}
 function readRequestIds(){const key=requestScope();if(!key)return new Set();const memory=readMemory.get(key)||[];try{const stored=JSON.parse(localStorage.getItem(key)||'[]');return new Set([...memory,...(Array.isArray(stored)?stored:[])])}catch{return new Set(memory)}}
 function requestKey(r){return r.kind+':'+r.id}
@@ -214,11 +215,25 @@ function overtimeState(r){return r.settlement_state==='READY'?`ชดได้ $
 function overtimeDetails(r){return `<div class="ot-total"><span>ชั่วโมงที่ใช้ได้</span><strong>${r.settlement_state==='READY'?hours(Number(r.available_minutes??r.minutes)/60):'ยังสรุปไม่ได้'}</strong>${r.settlement_state!=='READY'?`<small>${esc(overtimeState(r))}</small>`:''}</div>`+table(['วันทำงาน','เวลาสุทธิ','เวลาที่กำหนด'],[[r.source_date||'—',hours(r.source_paid_minutes==null?null:r.source_paid_minutes/60),hours(r.source_required_minutes==null?null:r.source_required_minutes/60)],[r.target_date||'—',hours(r.target_paid_minutes==null?null:r.target_paid_minutes/60),hours(r.target_required_minutes==null?null:r.target_required_minutes/60)]])+ `<p role="status">${esc(overtimeState(r))}</p>`}
 function overtimeDescription(r){return `${r.mode==='USE_PRIOR'?'ใช้ชั่วโมงเกิน':'ชดชั่วโมงขาด'} ${esc(overtimeState(r))} · ${esc(r.source_date||'—')} → ${esc(r.target_date||'—')}`}
 async function requestQueue(){
- const scope=requestScope();
- try{const [regular,ot]=await Promise.all([api('staging_request_queue'),api('staging_ot_queue')]);const data=combineQueues(regular,ot);if(scope&&scope===requestScope()){requestCache.set(scope,data);navigation()}return data}
+ const scope=requestScope(),version=(queueVersions.get(scope)||0)+1;queueVersions.set(scope,version);
+ try{const [regular,ot]=await Promise.all([api('staging_request_queue'),api('staging_ot_queue')]);const data=combineQueues(regular,ot);data.rows=data.rows.filter(r=>(!r.status||r.status==='PENDING')&&!settledRequests.get(scope)?.has(requestKey(r)));if(version!==queueVersions.get(scope))return requestCache.get(scope)||{rows:[],warnings:[]};if(scope&&scope===requestScope()){requestCache.set(scope,data);navigation()}return data}
  catch(error){return {rows:[],warnings:[['STAGING_READ_ONLY','UNKNOWN_ACTION'].includes(error.message)?'รายการคำขอยังรอเปิดบริการอ่านข้อมูล':'โหลดคำขอไม่สำเร็จ: '+errorMessage(error)]}}
 }
-async function refreshRequestNotifications(){if(!state.connected||state.personal||!['admin','hr'].includes(state.role)||document.hidden||refreshRequestNotifications.busy)return;refreshRequestNotifications.busy=true;try{await requestQueue()}finally{refreshRequestNotifications.busy=false}}
+async function refreshRequestNotifications(){
+ if(!state.connected||document.hidden||refreshRequestNotifications.busy)return;
+ refreshRequestNotifications.busy=true;
+ try{
+  if(state.personal||state.role==='employee'){
+   const kind=state.page==='clock-request'?'correction':state.page==='my-leave'?'leave':null;
+   if(kind){const version=renderVersion,rows=await personalRequests(kind);if(version===renderVersion&&$('#personalRequestHistory'))$('#personalRequestHistory').innerHTML=personalHistory(rows)}
+  }else if(['admin','hr'].includes(state.role)){
+   const scope=requestScope(),before=JSON.stringify(requestCache.get(scope)?.rows),version=renderVersion;
+   const data=await requestQueue();
+   if(version===renderVersion&&scope===requestScope()&&!data.warnings?.length&&before!==JSON.stringify(data.rows)&&['dashboard','clock-approvals','leave'].includes(state.page)&&!$('#actionDialog').open)await render();
+  }
+ }catch{/* Keep existing history and typed forms when background refresh fails. */}
+ finally{refreshRequestNotifications.busy=false}
+}
 function openRequest(key){
  const r=(requestCache.get(requestScope())?.rows||[]).find(r=>requestKey(r)===key);
  if(!r||state.personal||!['admin','hr'].includes(state.role))return;
@@ -253,9 +268,11 @@ async function loadOvertimeBalance(button){
 
 async function personalRequestView(kind){
  const form=kind==='leave'?leaveView():correctionView()+overtimeView();
- try{const data=combineQueues(await api('staging_request_mine'),kind==='correction'?await api('staging_ot_mine'):{rows:[]});return form+panel('<h2>คำขอที่ส่งแล้ว · ทดลอง</h2>'+myRequestHistory((data.rows||[]).filter(r=>requestCategory(r)===kind)))}
+ try{const rows=await personalRequests(kind);return form+panel('<div id="personalRequestHistory">'+personalHistory(rows)+'</div>')}
  catch(error){return form+panel(`<p class="report-warning">โหลดประวัติไม่สำเร็จ: ${esc(workflowError(error))}</p>`)}
 }
+async function personalRequests(kind){const data=combineQueues(await api('staging_request_mine'),kind==='correction'?await api('staging_ot_mine'):{rows:[]});return (data.rows||[]).filter(r=>requestCategory(r)===kind)}
+function personalHistory(rows){const pending=rows.filter(r=>r.status==='PENDING'),done=rows.filter(r=>r.status!=='PENDING');return '<h2>คำขอรออนุมัติ</h2>'+myRequestHistory(pending)+(done.length?`<details class="event-details"><summary>ประวัติคำขอที่พิจารณาแล้ว / ยกเลิก (${done.length})</summary>${myRequestHistory(done)}</details>`:'')}
 function myRequestHistory(rows){
  const status={PENDING:'รออนุมัติ',APPROVED:'อนุมัติทดลอง',REJECTED:'ปฏิเสธ',CANCELLED:'ยกเลิก'};
  return rows.map(r=>`<article class="request-item ${r.kind==='correction'&&r.approved_sequence_in_month>=3?'frequent-request':''}"><strong>${esc(r.work_date)} · ${status[r.status]||esc(r.status)}</strong><p>${r.kind==='overtime'?overtimeDescription(r):''}</p><p class="request-reason">เหตุผล : ${esc(r.reason)}</p>${r.review_reason?`<p>หมายเหตุ: ${esc(r.review_reason)}</p>`:''}${r.approved_sequence_in_month?`<p class="${r.approved_sequence_in_month>=3?'report-warning':''}">ครั้งที่ ${r.approved_sequence_in_month}</p>`:''}${r.status==='PENDING'?`<button class="btn secondary" data-request-kind="${esc(r.kind)}" data-cancel-request="${esc(r.id)}">ยกเลิกคำขอ</button>`:''}</article>`).join('')||empty('ยังไม่มีคำขอที่ส่งในชุดทดลอง');
@@ -292,7 +309,7 @@ async function reviewRequest(button){
  const reason=button.dataset.decision==='APPROVED'?'':($('#reviewReason')?.value||'').trim();
  if(button.dataset.decision==='REJECTED'&&!reason){toast('กรุณาระบุเหตุผลที่ปฏิเสธ');return}
  const buttons=document.querySelectorAll('[data-review-id]');buttons.forEach(b=>b.disabled=true);
- try{await api(button.dataset.reviewKind==='overtime'?'staging_ot_review':'staging_request_review',{id:button.dataset.reviewId,decision:button.dataset.decision,reviewReason:reason});$('#actionDialog').close();await render();toast('บันทึกผลพิจารณาในชุดทดลองแล้ว')}
+ try{await api(button.dataset.reviewKind==='overtime'?'staging_ot_review':'staging_request_review',{id:button.dataset.reviewId,decision:button.dataset.decision,reviewReason:reason});invalidateReviewedRequest(button.dataset.reviewKind||'correction',button.dataset.reviewId);$('#actionDialog').close();$('#actionBody').innerHTML='';await render();toast('บันทึกผลพิจารณาในชุดทดลองแล้ว')}
  catch(error){toast(workflowError(error))}finally{buttons.forEach(b=>b.disabled=false)}
 }
 async function cancelRequest(button){
@@ -354,6 +371,6 @@ document.addEventListener('submit',e=>{
 });
 $('#closeActionDialog').onclick=$('#cancelActionDialog').onclick=()=>$('#actionDialog').close();
 setInterval(tick,1000);
-setInterval(refreshRequestNotifications,60000);
+setInterval(refreshRequestNotifications,30000);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden){tick();refreshRequestNotifications()}});
 navigation();init();
