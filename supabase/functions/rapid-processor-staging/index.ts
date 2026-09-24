@@ -1241,7 +1241,14 @@ Deno.serve(async (req) => {
     if (currentAdminError) throw currentAdminError;
 
     const employee = currentEmployee;
-    const admin = currentAdmin;
+    let admin = currentAdmin;
+    // New HR grants are deliberately not stored in public.admins. Allow only
+    // existing scoped read endpoints here; live mutations use their own gateway.
+    if (!admin && STAGING_READ_ACTIONS.has(action)) {
+      const {data:identity,error:identityError}=await supabase.rpc('kitty_live_access_v1',{actor:profile.userId,operation:'identity',payload:{}});
+      if(identityError)throw identityError;
+      if(identity?.ok&&identity.role==='HR')admin={id:identity.registration?.id,role:'HR'};
+    }
     // Admin may inspect the HR workspace, but the preview only narrows access.
     const isHR = String(admin?.role || "").toUpperCase() === "HR" || (!!admin && body.previewRole === "HR");
     let hrEmployees: any[] = [];

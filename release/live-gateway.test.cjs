@@ -44,3 +44,9 @@ test('external HR cannot clock without an active employee and invalid GPS never 
 test('missing LINE token fails before any data access',async()=>{
  const {handle,calls}=setup();await assert.rejects(handle('','record',payload),/MISSING_LINE_TOKEN/);assert.equal(calls.length,0);
 });
+test('live request routes use verified identity, fixed operations and never proxy legacy',async()=>{
+ const requests=[];const {handle,calls}=setup('EMPLOYEE',{requests:async(...args)=>{requests.push(args);return {ok:true}}});
+ for(const op of ['submit','review','cancel','mine','queue','report'])await handle('token','live_request_'+op,{actor:'forged'});
+ assert.equal(requests.length,6);assert(requests.every(r=>r[0]==='verified-line'));assert.equal(calls.length,0);
+ await assert.rejects(handle('token','live_request_delete'),/ACTION_NOT_CONNECTED/);
+});

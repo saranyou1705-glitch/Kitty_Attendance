@@ -4,6 +4,7 @@ type Dependencies = {
  verifyLine:(token:string)=>Promise<{userId:string,displayName?:string,pictureUrl?:string}>;
  access:(actor:string,operation:string,payload:Record<string,unknown>)=>Promise<any>;
  legacy:(token:string,action:string,payload:Record<string,unknown>)=>Promise<any>;
+ requests?:(actor:string,operation:string,payload:Record<string,unknown>)=>Promise<any>;
 };
 export function createGateway(deps:Dependencies){
  return async function handle(token:string,action:string,body:Record<string,any>={}){
@@ -13,6 +14,11 @@ export function createGateway(deps:Dependencies){
   const roles:Record<string,string>={hr_register:'register',admin_hr_list:'list',admin_hr_grant:'grant',admin_hr_reject:'reject',admin_hr_revoke:'revoke'};
   if(Object.prototype.hasOwnProperty.call(roles,action)){
    return deps.access(profile.userId,roles[action],body);
+  }
+  const requests:Record<string,string>={live_request_submit:'submit',live_request_review:'review',live_request_cancel:'cancel',live_request_mine:'mine',live_request_queue:'queue',live_request_report:'report'};
+  if(Object.prototype.hasOwnProperty.call(requests,action)){
+   if(!deps.requests)throw Error('ACTION_NOT_CONNECTED');
+   return deps.requests(profile.userId,requests[action],body);
   }
   const identity=await deps.access(profile.userId,'identity',{});
   if(!identity?.ok)throw Error('IDENTITY_UNAVAILABLE');

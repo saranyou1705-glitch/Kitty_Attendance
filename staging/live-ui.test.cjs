@@ -3,6 +3,24 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const vm=require('node:vm');
 const source=fs.readFileSync(__dirname+'/app.js','utf8').replace('navigation();init();','');
+test('real request notes retain real status in individual export',()=>{
+ const {run}=setup();const result=run("mergeSandboxReport({rows:[{work_date:'2026-09-24'}]}, {rows:[{kind:'leave',work_date:'2026-09-24',sandbox:false},{kind:'overtime',work_date:'2026-09-24',sandbox:true}]} )");
+ assert.equal(result.rows[0].requests[0].sandbox,false);assert.equal(result.rows[0].requests[1].sandbox,true);
+});
+test('live bootstrap and HR membership route to verified production gateway',async()=>{
+ const calls=[];const {run}=setup(async(url,options)=>{calls.push([url,JSON.parse(options.body)]);return {ok:true,json:async()=>({ok:true})}});
+ run("CONFIG.requestsLive=true;state.role='employee'");await run("api('bootstrap')");await run("api('hr_register',{name:'HR'})");
+ assert(calls.every(c=>c[0].includes('kitty-attendance-live')));assert.deepEqual(calls[1][1],{name:'HR'});
+});
+test('production requests route separately and isolate old trial drafts',async()=>{
+ const calls=[];const {run}=setup(async(url,options)=>{calls.push([url,JSON.parse(options.body)]);return {ok:true,json:async()=>({ok:true})}});
+ run("state.boot={employee:{id:'self'}};sessionStorage.setItem(draftKey(),JSON.stringify([{id:'trial'}]));CONFIG.requestsLive=true;state.role='hr'");
+ assert.equal(run('drafts().length'),0);
+ await run("api('staging_request_review',{id:'real'})");
+ assert(calls[0][0].includes('kitty-attendance-live?action=live_request_review'));assert.equal(calls[0][1].previewRole,'HR');
+ await run("api('staging_ot_queue')");assert(calls[1][0].includes('rapid-processor-staging?action=staging_ot_queue'));
+ assert.equal(run("liveRequest('leave')"),true);assert.equal(run("liveRequest('overtime')"),false);
+});
 function setup(fetcher){
  const nodes=new Map(),listeners={},storage=new Map();
  const node=key=>{if(!nodes.has(key))nodes.set(key,{innerHTML:'',textContent:'',hidden:false,value:'',classList:{add(){},remove(){},toggle(){}},showModal(){}});return nodes.get(key)};
