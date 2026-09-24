@@ -19,7 +19,7 @@ function allowedActions(mode, events) {
     ['DAY_IN','BRANCH_OUT'].includes(last)&&'DAY_OUT'
   ].filter(Boolean);
   if(!['STANDARD','STOCK_REFILL'].includes(mode))return [];
-  return [!types.length&&'IN',last==='IN'&&'BREAK_OUT',last==='BREAK_OUT'&&'BREAK_IN',['IN','BREAK_IN'].includes(last)&&'OUT'].filter(Boolean);
+  return [!types.length&&'IN',last==='IN'&&'BREAK_OUT',last==='BREAK_OUT'&&'BREAK_IN',last==='BREAK_IN'&&'OUT'].filter(Boolean);
 }
 function createRecorder({loadToday,getPosition,record,clock=()=>new Date()}) {
   let busy=false,uncertain=false;

@@ -194,3 +194,14 @@ input::-webkit-date-and-time-value{text-align:left;min-height:1.5em}
  .bottom-nav .nav-item{font-size:11px;line-height:1.4}
  .legacy-entry{display:inline-block;margin:10px 0 0}
 }
+
+/* Constrain native iOS month/date controls within their grid track. */
+.month-nav{display:grid;grid-template-columns:44px minmax(0,1fr) 44px;gap:8px}
+.month-nav input,.date-field input{box-sizing:border-box;min-width:0;min-inline-size:0;max-width:100%;width:100%;appearance:none;-webkit-appearance:none;text-align:left}
+.month-nav input{height:44px;padding:8px;font-size:14px}
+.month-nav .icon-button{width:44px;height:44px;min-width:0;padding:0}
+.date-field{display:grid;grid-template-columns:minmax(0,1fr);width:100%;max-width:360px;min-width:0}
+.date-field input{height:48px}
+.attendance-tag{display:inline-flex;align-items:center;justify-content:center;line-height:1.5;vertical-align:middle}
+.admin-event-form{margin-top:20px;padding-top:20px;border-top:1px solid var(--line)}
+@media(max-width:720px){.dashboard-heading .date-field{display:grid;width:100%;max-width:100%}.dashboard-heading .date-field input{max-width:100%}.cal-day{padding:6px 2px}.cal-day small{font-size:10px;overflow-wrap:anywhere}.bottom-nav.management-bottom .nav-item{min-width:0;line-height:1.5}}
