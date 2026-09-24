@@ -159,3 +159,22 @@ test('OT belongs to correction queue and unread badge, never correction penalty 
  assert.equal(run("unreadRequests('correction').length"),1);assert.equal(run("unreadRequests('leave').length"),0);
  const html=run('overtimeView()');assert(html.includes('USE_PRIOR'));assert(html.includes('MAKEUP_NEXT'));assert(html.includes('ส่งให้ HR'));
 });
+test('automatic OT form has no minutes and HR sees both actual day totals',()=>{
+ const {run,node}=setup();assert(!run('overtimeView()').includes('name="minutes"'));
+ run("state.role='hr';state.boot={profile:{userId:'hr'}};requestCache.set(requestScope(),{rows:[{id:'x',kind:'overtime',mode:'USE_PRIOR',source_date:'2026-09-23',target_date:'2026-09-24',source_paid_minutes:600,target_paid_minutes:420,source_required_minutes:480,target_required_minutes:480,minutes:60,remaining_short_minutes:0,settlement_state:'READY'}]});openRequest('overtime:x')");
+ const html=node('#actionBody').innerHTML;assert(html.includes('10 ชม. 0 นาที'));assert(html.includes('7 ชม. 0 นาที'));assert(html.includes('ชดได้ 1 ชม. 0 นาที'));
+ assert.equal((html.match(/data-review-kind="overtime"/g)||[]).length,2);
+ assert(run("overtimeDescription({settlement_state:'WAITING',minutes:null})").includes('รอตรวจเวลาครบทั้งสองวัน'));
+});
+test('BA and Driver previews cannot impersonate users or send data',()=>{
+ const {run,node}=setup();run("state.role='admin';state.boot={isAdmin:true,adminRole:'ADMIN'};showRolePreview('MULTI_BRANCH')");
+ assert(node('#actionBody').innerHTML.includes('เข้าสาขา'));assert(node('#actionBody').innerHTML.includes('ตัวอย่างหน้าตาเท่านั้น'));
+ assert.equal(run('state.role'),'admin');assert.equal(run('state.boot.employee'),undefined);
+ run("showRolePreview('DRIVER')");assert(node('#actionBody').innerHTML.includes('งานขับรถ'));assert(!node('#actionBody').innerHTML.includes('เข้าสาขา'));
+ node('#actionBody').innerHTML='unchanged';run("state.role='hr';showRolePreview('MULTI_BRANCH')");assert.equal(node('#actionBody').innerHTML,'unchanged');
+});
+test('actual BA clock renders branch flow with own events and no fabricated data',async()=>{
+ const calls=[];const {run}=setup(async(url)=>{calls.push(new URL(url).searchParams.get('action'));return {ok:true,json:async()=>({ok:true,events:[{event_type:'BRANCH_IN',event_at:'2026-09-24T03:00:00Z',office_name:'Actual Branch'}],daily:{paid_work_hours:2}})}});
+ run("state.boot={employee:{id:'self',attendance_mode:'MULTI_BRANCH'}}");
+ const html=await run('clockView()');assert(html.includes('Actual Branch'));assert(html.includes('จบวันทำงาน'));assert(html.includes('อยู่ที่สาขา'));assert.deepEqual(calls,['today']);
+});
