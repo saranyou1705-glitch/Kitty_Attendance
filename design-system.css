@@ -160,4 +160,37 @@ button,input,select,textarea{letter-spacing:normal;line-height:1.5}h1,h2,h3,.bra
 
 .live-clock-notice{padding:12px 16px;border:1px solid var(--line);border-radius:14px;background:var(--soft);margin-bottom:12px}.live-clock-notice+[data-clock-refresh]{margin-bottom:20px}
 
-.legacy-entry{display:inline-block;font-size:13px;color:var(--muted);padding:8px 0;margin-bottom:8px;text-underline-offset:3px}
+
+/* Mobile form alignment and bundled Thai typography. */
+@font-face{font-family:KittyThai;src:url('fonts/noto-thai-400.ttf') format('truetype');font-weight:400;font-display:swap}
+@font-face{font-family:KittyThai;src:url('fonts/noto-thai-500.ttf') format('truetype');font-weight:500;font-display:swap}
+@font-face{font-family:KittyThai;src:url('fonts/noto-thai-600.ttf') format('truetype');font-weight:600;font-display:swap}
+:root,body{font-family:KittyThai,Arial,sans-serif}
+button,input,select,textarea{font-family:inherit}
+.request-form,.request-form label,.request-form input,.request-form select,.request-form textarea{box-sizing:border-box;min-width:0;max-width:100%}
+.request-form{display:grid;gap:16px;width:100%}
+.request-form label{display:grid;gap:8px;margin:0}
+.request-form input,.request-form select,.request-form textarea{display:block;width:100%;margin:0;font-size:16px;line-height:1.5}
+.request-form input[type=date],.request-form input[type=time]{appearance:none;-webkit-appearance:none;min-inline-size:0;height:48px;text-align:left}
+input::-webkit-date-and-time-value{text-align:left;min-height:1.5em}
+.request-form>.btn{width:100%;margin:0;min-height:48px}
+.request-form p{margin:0}
+.ot-empty{padding:12px 0;color:var(--muted)}
+.app-shell{padding-top:0;margin-top:16px}
+.sidebar,.topbar{top:0}
+.legacy-entry{font-size:12px}
+@media(max-width:720px){
+ .app-shell{margin:0;padding:0}
+ .sidebar{padding:16px 16px 8px}
+ .app-chrome{gap:12px;margin-bottom:0}
+ .workspace-switch{margin:0;max-width:100%}
+ .workspace-switch button{min-height:40px}
+ .topbar{padding:16px 16px 0}
+ .topbar h1,.view-heading h1{font-size:24px;letter-spacing:0}
+ .content{padding:16px 16px calc(104px + env(safe-area-inset-bottom))}
+ .panel{padding:20px;border-radius:20px}
+ .panel h2{margin-bottom:16px;line-height:1.5}
+ .brand strong{letter-spacing:0}
+ .bottom-nav .nav-item{font-size:11px;line-height:1.4}
+ .legacy-entry{display:inline-block;margin:10px 0 0}
+}
