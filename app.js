@@ -1,6 +1,6 @@
 'use strict';
 const $ = s => document.querySelector(s);
-const CONFIG = {liveApi:'https://rlqecfzddxpywbbbiirg.supabase.co/functions/v1/kitty-attendance-live',liffId:'2010336238-Ub6d565R', api:'https://rlqecfzddxpywbbbiirg.supabase.co/functions/v1/rapid-processor-staging'};
+const CONFIG = {requestsLive:true,liveApi:'https://rlqecfzddxpywbbbiirg.supabase.co/functions/v1/kitty-attendance-live',liffId:'2010336238-Ub6d565R', api:'https://rlqecfzddxpywbbbiirg.supabase.co/functions/v1/rapid-processor-staging'};
 const menus = {
  admin:[['dashboard','⌂','ภาพรวมวันนี้'],['employees','♙','พนักงาน'],['offices','◇','Office / Branch'],['schedule','□','ตารางงาน'],['attendance','◷','แก้ไขเวลา'],['clock-approvals','✓','ขอลงเวลา'],['leave','✈','ขอลา'],['reports','▤','รายงาน'],['line','◉','LINE Report'],['audit','≋','Audit Log'],['settings','⚙','ตั้งค่าระบบ']],
  hr:[['dashboard','⌂','ภาพรวมวันนี้'],['employees','♙','พนักงาน'],['schedule','□','ตารางงาน'],['clock-approvals','✓','ขอลงเวลา'],['leave','✈','ขอลา'],['reports','▤','รายงาน']],
@@ -62,13 +62,14 @@ async function refreshClock(){
 function table(headers,rows){return `<div class="data-scroll"><table class="data-table"><thead><tr>${headers.map(h=>`<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${r.map(c=>`<td>${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>${rows.length?'':empty('ไม่พบข้อมูลในช่วงที่เลือก')}`}
 function errorMessage(error){const m=String(error?.message||error);if(m==='Failed to fetch')return 'เชื่อมต่อข้อมูลไม่สำเร็จ กรุณาลองใหม่หรือตรวจอินเทอร์เน็ต';if(m==='EMPLOYEE_NOT_REGISTERED')return 'บัญชี LINE นี้ยังไม่ผูกกับพนักงาน';if(m==='INVALID_LINE_TOKEN'||m==='MISSING_LINE_TOKEN')return 'การเข้าสู่ระบบหมดอายุ กรุณาเข้าสู่ระบบ LINE อีกครั้ง';return m}
 async function api(action,payload={}){
+ if(CONFIG.requestsLive&&action.startsWith('staging_request_'))action=action.replace('staging_request_','live_request_');
  const token=window.liff?.getAccessToken();if(!token)throw new Error('MISSING_LINE_TOKEN');
  const control=new AbortController(),timer=setTimeout(()=>control.abort(),20000);
- const request={...payload};if(state.role==='hr'&&action.startsWith('admin_')||state.role==='hr'&&(action==='staging_schedule'||(action.startsWith('staging_request_')||action.startsWith('staging_ot_')||action.startsWith('staging_people_'))))request.previewRole='HR';
- try{const r=await fetch(`${['record','today','employee_month'].includes(action)?CONFIG.liveApi:CONFIG.api}?action=${encodeURIComponent(action)}`,{method:'POST',headers:{'Content-Type':'application/json','x-line-access-token':token},body:JSON.stringify(request),signal:control.signal});let data;try{data=await r.json()}catch{throw new Error(`บริการข้อมูลตอบกลับไม่สมบูรณ์ (${r.status})`)}if(!r.ok||!data.ok)throw new Error(data.message||data.error||`HTTP ${r.status}`);return data}finally{clearTimeout(timer)}
+ const request={...payload};if(state.role==='hr'&&action.startsWith('admin_')&&!action.startsWith('admin_hr_')||state.role==='hr'&&(action==='staging_schedule'||(action.startsWith('staging_request_')||action.startsWith('live_request_')||action.startsWith('staging_ot_')||action.startsWith('staging_people_'))))request.previewRole='HR';
+ try{const r=await fetch(`${(['record','today','employee_month'].includes(action)||action.startsWith('live_request_')||(CONFIG.requestsLive&&(action==='bootstrap'||action==='hr_register'||action.startsWith('admin_hr_'))))?CONFIG.liveApi:CONFIG.api}?action=${encodeURIComponent(action)}`,{method:'POST',headers:{'Content-Type':'application/json','x-line-access-token':token},body:JSON.stringify(request),signal:control.signal});let data;try{data=await r.json()}catch{throw new Error(`บริการข้อมูลตอบกลับไม่สมบูรณ์ (${r.status})`)}if(!r.ok||!data.ok)throw new Error(data.message||data.error||`HTTP ${r.status}`);return data}finally{clearTimeout(timer)}
 }
 function activeMenu(){if(state.connected&&state.boot&&!state.boot?.employee&&!state.boot?.isAdmin)return [];return state.personal?menus.employee:menus[state.role]}
-function loginRedirect(){const url=new URL('https://saranyou1705-glitch.github.io/Kitty_Attendance/');if(new URLSearchParams(location.search).get('view')==='hr')url.searchParams.set('view','hr');return url.href}
+function loginRedirect(){const url=new URL('https://saranyou1705-glitch.github.io/Kitty_Attendance/');if(new URLSearchParams(location.search).get('view')==='hr')url.searchParams.set('view','hr');if(new URLSearchParams(location.search).get('register')==='hr')url.searchParams.set('register','hr');return url.href}
 function navigation(){
  const avatar=$('#selfProfileButton'),picture=state.boot?.profile?.pictureUrl;avatar.hidden=!state.connected||!state.boot?.employee;avatar.innerHTML=picture&&/^https:\/\//.test(picture)?`<img src="${esc(picture)}" alt="รูปโปรไฟล์ของฉัน" referrerpolicy="no-referrer">`:`<span>${esc((state.boot?.employee?.name||'ฉัน').slice(0,1))}</span>`;
  $('#pageHeader').hidden=state.connected&&['dashboard','clock'].includes(state.page);
@@ -95,8 +96,8 @@ async function init(){
   if(boot.serverTime){const server=Date.parse(boot.serverTime);if(Number.isFinite(server))offset=server-(started+Date.now())/2}
   state.boot=boot;state.connected=true;state.role=String(boot.adminRole).toUpperCase()==='HR'?'hr':boot.isAdmin?'admin':'employee';state.personal=false;
   if(state.role==='admin'&&new URLSearchParams(location.search).get('view')==='hr')state.role='hr';
-  state.date=dateKey();state.month=state.date.slice(0,7);state.selected=state.date;state.page=state.role==='employee'?'clock':'dashboard';
-  $('#environmentStatus').textContent='ลงเวลาจริง · คำขอและการจัดการยังเป็นชุดทดลอง';state.loginLoading=true;try{await render()}finally{state.loginLoading=false}
+  state.date=dateKey();state.month=state.date.slice(0,7);state.selected=state.date;state.page=CONFIG.requestsLive&&state.role==='employee'&&new URLSearchParams(location.search).get('register')==='hr'?'hr-register':state.role==='employee'?'clock':'dashboard';
+  $('#environmentStatus').textContent=CONFIG.requestsLive?'ลงเวลา ลา และแก้เวลาจริง · OT/จัดการพนักงานยังทดลอง':'ลงเวลาจริง · คำขอและการจัดการยังเป็นชุดทดลอง';state.loginLoading=true;try{await render()}finally{state.loginLoading=false}
  }catch(e){$('#environmentStatus').textContent='STAGING · ยังไม่เชื่อมต่อข้อมูล';$('#content').innerHTML=panel(`<h2>โหลดข้อมูลไม่ได้</h2><p>${esc(errorMessage(e))}</p><button class="btn primary" data-action="reconnect">ลองเชื่อมต่อใหม่</button><button class="btn secondary" data-action="login">เข้าสู่ระบบ LINE ใหม่</button>`)}
 }
 async function directory(){if(state.directory)return state.directory;const role=state.role;const data=await api('admin_bootstrap');if(state.role===role)state.directory=data;return data}
@@ -138,6 +139,8 @@ async function dashboardView(){
 function dailyTable(rows){return table(['พนักงาน','วันที่','เข้างาน','ออกงาน','ชั่วโมงทำงาน'],(rows||[]).map(r=>[person(r.employee),r.work_date,time(r.first_in_at),time(r.last_out_at),hours(r.paid_work_hours)]))}
 
 async function signupView(){
+ if(CONFIG.requestsLive&&new URLSearchParams(location.search).get('register')==='hr')return window.KittyHRAccess.registration(state.boot.hrRegistration);
+
  const d=await api('staging_people_mine'),r=d.registration;
  if(r)return panel(`<h2>${r.status==='READY'?'HR อนุมัติแล้ว':'ส่งชื่อให้ HR แล้ว'}</h2><p>${esc(r.name)}</p><p>${r.status==='READY'?'ข้อมูลอยู่ในชุดทดลอง รอเปิดใช้งานจริง':'รอ HR ตรวจสอบและเติมข้อมูลพนักงาน'}</p><button class="btn secondary" data-action="retry">ตรวจสถานะ</button>`);
  return panel('<h2>ลงทะเบียนพนักงานใหม่</h2><form id="signupForm" class="request-form"><label>ชื่อ–นามสกุล<input name="name" maxlength="160" required autocomplete="name"></label><p>ส่งให้ HR Head Office กรอกข้อมูลส่วนที่เหลือ · ชุดทดลอง</p><button class="btn primary" type="submit">ส่งชื่อให้ HR</button></form>');
@@ -149,7 +152,7 @@ async function submitSignup(form){
 function peopleError(e){return ({REGISTRATION_REQUIRED:'ต้องรอคำขอจากบัญชี LINE ของพนักงานใหม่',APPROVAL_REQUIRED:'กรุณายืนยันอนุมัติพนักงานใหม่',INVALID_FIELDS:'แก้ไขได้เฉพาะโทรศัพท์และอีเมล',INVALID_PHONE:'กรุณาตรวจสอบเบอร์โทรศัพท์',INVALID_EMAIL:'กรุณาตรวจสอบอีเมล',STALE_PROFILE:'มีการบันทึกข้อมูลนี้แล้ว กรุณาปิดและเปิดใหม่',DUPLICATE_CODE:'รหัสพนักงานนี้มีอยู่แล้ว',INVALID_NAME:'กรุณากรอกชื่อไม่เกิน 160 ตัวอักษร',INVALID_DAYOFF:'กรุณาเลือกวันหยุดจากช่องที่กำหนด',HO_ONLY:'เพิ่มพนักงานใหม่ได้เฉพาะ Head Office ในชุดทดลอง',CODE_IMMUTABLE:'ยังไม่เปิดให้เปลี่ยนรหัสพนักงานเดิม',ALREADY_EMPLOYEE:'บัญชีนี้มีข้อมูลพนักงานแล้ว',INVALID_REQUEST:'กรุณาตรวจชื่อและรหัสพนักงาน',PERSONNEL_SERVICE_ERROR:'บันทึกข้อมูลพนักงานไม่สำเร็จ กรุณาลองใหม่'})[e.message]||workflowError(e)}
 function personnelTarget(id){const row=(state.peopleRows||[]).find(e=>e.id===id);return row?.sandbox_new?{profileId:row.id}:{employeeId:id}}
 async function loadPeople(){
- const [d,p]=await Promise.all([directory(),api('staging_people_list')]);
+ const [d,p]=await Promise.all([directory(),trialApi('staging_people_list')]);
  const rows=(d.employees||[]).map(e=>{const s=(p.profiles||[]).find(p=>p.employee_id===e.id);return s?{...e,...s,id:e.id,sandbox_profile:s.id}:e});
  rows.push(...(p.profiles||[]).filter(p=>!p.employee_id).map(p=>({...p,active:true,attendance_mode:'STANDARD',sandbox_new:true})));
  state.peopleRows=rows;return {rows,registrations:p.registrations||[]};
@@ -224,7 +227,7 @@ async function monthlyOtView(){
  const month=state.month,role=state.role,d=await directory(),employees=reportEmployees(d.employees||[],role);
  const rows=[];
  for(let i=0;i<employees.length;i+=3){
-  rows.push(...await Promise.all(employees.slice(i,i+3).map(async e=>{const result=await api('staging_ot_report',{employeeId:e.id,month});return [person(e),otSummaryLabel(otSummary(result.rows||[]))]})));
+  rows.push(...await Promise.all(employees.slice(i,i+3).map(async e=>{const result=await trialApi('staging_ot_report',{employeeId:e.id,month});return [person(e),otSummaryLabel(otSummary(result.rows||[]))]})));
  }
  return panel(`<h2>ใช้ชดแล้ว · OT ทดลอง</h2><p>คำขอที่อนุมัติสำหรับเดือน ${esc(month)} รวมวันนี้เมื่อเวลาครบทั้งสองวัน</p>${table(['พนักงาน','ใช้ชดแล้ว'],rows)}<p class="panel-sub">แสดงแยกจากยอดระบบเดิม ไม่บวกซ้ำหรือปรับเงินเดือน</p>`);
 }
@@ -252,7 +255,7 @@ async function individualReportView(){
  const selected=id==='ALL'?employees:employees.filter(e=>e.id===id);
  for(let i=0;i<selected.length;i+=3){
   if(version!==renderVersion)return '';
-  const batch=await Promise.all(selected.slice(i,i+3).map(async e=>mergeSandboxReport(await api('admin_individual_report',{employeeId:e.id,month}),combineQueues(await api('staging_request_report',{employeeId:e.id,month}),await api('staging_ot_report',{employeeId:e.id,month})))));
+  const batch=await Promise.all(selected.slice(i,i+3).map(async e=>mergeSandboxReport(await api('admin_individual_report',{employeeId:e.id,month}),combineQueues(await api('staging_request_report',{employeeId:e.id,month}),await trialApi('staging_ot_report',{employeeId:e.id,month})))));
   if(batch.some((r,j)=>r.employee?.id!==selected[i+j].id||r.month!==month))throw Error('ข้อมูลรายงานไม่ตรงกับที่เลือก กรุณาโหลดใหม่');
   if(scope==='active'&&batch.some(r=>r.employee.active!==true)){state.directory=null;throw Error('สถานะพนักงานเปลี่ยนระหว่างโหลด กรุณาโหลดรายชื่อใหม่')}
   reports.push(...batch);
@@ -266,8 +269,8 @@ async function individualReportView(){
 }
 
 function mergeSandboxReport(report,requests){
- const records=(requests.rows||[]).filter(r=>['leave','correction','overtime'].includes(r.kind)).map(r=>({...r,sandbox:true,effective_date:r.work_date}));
- return {...report,rows:report.rows.map(row=>({...row,ot_used_hours:otSummary(records.filter(r=>r.work_date===row.work_date)).hours,ot_waiting:otSummary(records.filter(r=>r.work_date===row.work_date)).waiting,requests:[...(row.requests||[]),...records.filter(r=>r.work_date===row.work_date||(r.created_at&&dateKey(new Date(r.created_at))===row.work_date))]})),warnings:[...(report.warnings||[]),'ยอดใช้ชดแล้ว (OT ทดลอง) นับเฉพาะอนุมัติและเวลาครบ แยกจากเวลาชดระบบเดิม ไม่ปรับเงินเดือน']};
+ const records=(requests.rows||[]).filter(r=>['leave','correction','overtime'].includes(r.kind)).map(r=>({...r,sandbox:r.sandbox!==false,effective_date:r.work_date}));
+ return {...report,rows:report.rows.map(row=>({...row,ot_used_hours:otSummary(records.filter(r=>r.work_date===row.work_date)).hours,ot_waiting:otSummary(records.filter(r=>r.work_date===row.work_date)).waiting,requests:[...(row.requests||[]),...records.filter(r=>r.work_date===row.work_date||(r.created_at&&dateKey(new Date(r.created_at))===row.work_date))]})),warnings:[...(report.warnings||[]),...(requests.warnings||[]),'ยอดใช้ชดแล้ว (OT ทดลอง) นับเฉพาะอนุมัติและเวลาครบ แยกจากเวลาชดระบบเดิม ไม่ปรับเงินเดือน']};
 }
 
 async function downloadIndividualReport(button){
@@ -278,19 +281,36 @@ async function downloadIndividualReport(button){
  try{const wb=window.KittyIndividualReport.build(report,window.ExcelJS);const bytes=await wb.xlsx.writeBuffer();if(!valid())return;const url=URL.createObjectURL(new Blob([bytes],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}));const a=document.createElement('a');a.href=url;a.download=`Attendance_${String(report.employee.employee_code).replace(/[^a-zA-Z0-9_-]/g,'_')}_${report.scope}_${report.month}.xlsx`;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);toast('สร้างไฟล์ Excel แล้ว กรุณาดูรายการดาวน์โหลด')}catch(e){toast(errorMessage(e))}finally{button.disabled=false;button.textContent='ดาวน์โหลด Excel'}
 }
 async function lineView(){const type=state.reportType||'END_DAY';const d=await api('admin_report_preview',{date:state.date,reportType:type});return `${dayPicker()}<label class="field">รายงาน<select id="reportType"><option value="MIDDAY" ${type==='MIDDAY'?'selected':''}>13:00</option><option value="END_DAY" ${type==='END_DAY'?'selected':''}>22:00</option></select></label>${panel(`<pre class="report-message">${esc(d.message)}</pre>${disabled('Send Now')}`)}`}
-function draftKey(){return `kitty-staging-drafts:${state.boot?.employee?.id||state.boot?.profile?.userId||'unlinked'}`}
+function draftKey(){return `kitty-${CONFIG.requestsLive?'live':'staging'}-drafts:${state.boot?.employee?.id||state.boot?.profile?.userId||'unlinked'}`}
 function drafts(){try{return JSON.parse(sessionStorage.getItem(draftKey())||'[]')}catch{return []}}
 function draftHistory(kind){return drafts().filter(d=>d.kind===kind).map(d=>`<div class="leave-card"><div><strong>${esc(d.date)} · ${esc(d.label)}</strong><p>${esc(d.reason)}</p><small>แบบร่างในเครื่อง · ยังไม่ส่งอนุมัติ</small></div><button class="btn primary" data-send-draft="${esc(d.id)}">ส่งให้ HR</button><button class="btn secondary" data-remove-draft="${esc(d.id)}">ลบแบบร่าง</button></div>`).join('')||empty('ยังไม่มีแบบร่างในเครื่องนี้')}
-function leaveView(){return panel(`<h2>ขอลา</h2><form id="leaveForm" class="request-form"><label>วันที่ลา<input name="date" type="date" value="${dateKey()}" required></label><label>ประเภทการลา<select name="type"><option>ลากิจ</option><option>ลาป่วย</option><option>ลาพักร้อน</option><option>ลาไม่รับค่าจ้าง</option></select></label><label>ระยะเวลา<select name="duration" id="leaveDuration"><option value="FULL_DAY">เต็มวัน</option><option value="HALF_DAY_AM">ครึ่งวันเช้า</option><option value="HALF_DAY_PM">ครึ่งวันบ่าย</option></select></label><p id="halfDayRule" hidden>วันลาครึ่งวันต้องทำงานสุทธิอย่างน้อย 4 ชั่วโมง หลังหักเวลาพัก</p><label>เหตุผล<textarea name="reason" rows="3" required maxlength="1000"></textarea></label><button class="btn secondary" type="submit">บันทึกแบบร่างในเครื่อง</button><button class="btn primary" type="submit" data-send-request="true">ส่งให้ HR</button><p class="panel-sub">ส่งเข้าชุดทดลองเท่านั้น ไม่แก้ตารางงานหรือเงินเดือนเดิม</p></form><h3>แบบร่างของฉัน</h3>${draftHistory('leave')}`)}
+function leaveView(){return panel(`<h2>ขอลา</h2><form id="leaveForm" class="request-form"><label>วันที่ลา<input name="date" type="date" value="${dateKey()}" required></label><label>ประเภทการลา<select name="type"><option>ลากิจ</option><option>ลาป่วย</option><option>ลาพักร้อน</option><option>ลาไม่รับค่าจ้าง</option></select></label><label>ระยะเวลา<select name="duration" id="leaveDuration"><option value="FULL_DAY">เต็มวัน</option><option value="HALF_DAY_AM">ครึ่งวันเช้า</option><option value="HALF_DAY_PM">ครึ่งวันบ่าย</option></select></label><p id="halfDayRule" hidden>วันลาครึ่งวันต้องทำงานสุทธิอย่างน้อย 4 ชั่วโมง หลังหักเวลาพัก</p><label>เหตุผล<textarea name="reason" rows="3" required maxlength="1000"></textarea></label><button class="btn secondary" type="submit">บันทึกแบบร่างในเครื่อง</button><button class="btn primary" type="submit" data-send-request="true">ส่งให้ HR</button><p class="panel-sub">${CONFIG.requestsLive?'เมื่ออนุมัติจะปรับตารางงานและสรุปเวลาจริง':'ส่งเข้าชุดทดลองเท่านั้น ไม่แก้ตารางงานหรือเงินเดือนเดิม'}</p></form><h3>แบบร่างของฉัน</h3>${draftHistory('leave')}`)}
 function correctionView(){return panel(`<h2>ขอลงเวลาย้อนหลัง</h2><form id="correctionForm" class="request-form"><label>วันที่<input name="date" type="date" max="${dateKey()}" value="${dateKey()}" required></label><label>เหตุการณ์<select name="event"><option>เข้างาน</option><option>ออกงาน</option><option>ออกพัก</option><option>กลับจากพัก</option></select></label><label>เวลา<input name="time" type="time" required></label><label>เหตุผล<textarea name="reason" required maxlength="1000"></textarea></label><button class="btn secondary" type="submit">บันทึกแบบร่างในเครื่อง</button><button class="btn primary" type="submit" data-send-request="true">ส่งให้ HR</button></form>${draftHistory('correction')}`)}
-async function leaveManagementView(){const d=await api('staging_schedule',{date:state.date});const rows=d.rows.filter(r=>['SICK_LEAVE','BUSINESS_LEAVE','VACATION','UNPAID_LEAVE','LEAVE'].includes(r.schedule_status));return `${dayPicker()}${panel(`<h2>การลาที่บันทึกในตารางงาน</h2>${table(['พนักงาน','วันที่','ประเภท'],rows.map(r=>[person(r.employee),r.work_date,scheduleLabel(r.schedule_status)]))}<p class="panel-sub">ข้อมูลจากระบบเดิม · ระบบรับคำขอและอนุมัติใน Staging ยังไม่เชื่อมต่อ</p>`)}`}
+async function leaveManagementView(){const d=await api('staging_schedule',{date:state.date});const rows=d.rows.filter(r=>['SICK_LEAVE','BUSINESS_LEAVE','VACATION','UNPAID_LEAVE','LEAVE'].includes(r.schedule_status));return `${dayPicker()}${panel(`<h2>การลาที่บันทึกในตารางงาน</h2>${table(['พนักงาน','วันที่','ประเภท'],rows.map(r=>[person(r.employee),r.work_date,scheduleLabel(r.schedule_status)]))}<p class="panel-sub">${CONFIG.requestsLive?'ข้อมูลตารางงานจริง รวมการลาที่อนุมัติแล้ว':'ข้อมูลจากระบบเดิม · ระบบรับคำขอและอนุมัติใน Staging ยังไม่เชื่อมต่อ'}</p>`)}`}
 function unavailableView(){return panel(`<h2>${esc(activeMenu().find(x=>x[0]===state.page)?.[2]||'รายการ')}</h2><p>หน้านี้ยังไม่เชื่อมข้อมูลและการบันทึกใน Staging</p><p class="panel-sub">ใช้งานฟังก์ชันนี้ผ่านระบบเดิมได้ตามปกติ</p>`)}
 function managementView(){return `<div class="management-grid">${state.role==='admin'?'<button class="management-card" data-role-preview="MULTI_BRANCH"><strong>ดูหน้าพนักงาน BA / Driver</strong><span>›</span></button>':''}${activeMenu().filter(x=>!['dashboard','employees','schedule','reports'].includes(x[0])).map(([id,icon,label])=>`<button class="management-card" data-page="${id}"><span class="nav-symbol">${uiIcon(id)}</span><strong>${label}</strong><span>›</span></button>`).join('')}</div>`}
+async function hrAccessView(){
+ if(!CONFIG.requestsLive||state.role!=='admin')return unavailableView();
+ const data=await api('admin_hr_list');state.hrRegistrations=data.registrations||[];
+ return window.KittyHRAccess.management(state.hrRegistrations)+panel('<a class="btn secondary" href="legacy.html">ตั้งค่าระบบเดิม</a>');
+}
+async function hrAccessDecision(button){
+ const row=(state.hrRegistrations||[]).find(r=>r.id===button.dataset.registrationId);if(!row)return;
+ button.disabled=true;
+ try{await window.KittyHRAccess.createController({api,confirm:message=>window.confirm(message)}).review(button.dataset.hrDecision,row);await render()}catch(e){toast(errorMessage(e))}finally{button.disabled=false}
+}
+async function submitHRRegistration(form){
+ const button=form.querySelector('button');button.disabled=true;
+ try{const result=await window.KittyHRAccess.createController({api,confirm:()=>false}).register(new FormData(form).get('name'));state.boot.hrRegistration=result.registration;await render()}catch(e){toast(errorMessage(e))}finally{button.disabled=false}
+}
+async function trialApi(action,payload={}){
+ try{return await api(action,payload)}catch(e){if(CONFIG.requestsLive&&['FORBIDDEN','ADMIN_REQUIRED'].includes(e.message))return {rows:[],profiles:[],registrations:[],warnings:['บัญชีนี้ไม่มีสิทธิ์ชุดทดลอง ข้อมูลส่วนนี้ไม่รวมในรายการ']};throw e}
+}
 async function attendanceView(){const d=await directory();return `${dayPicker()}${panel(`<h2>เลือกพนักงานเพื่อดูเวลา</h2>${employeeRows(d.employees,true)}`)}`}
 async function render(){
  navigation();if(!state.connected)return;
  const version=++renderVersion;$('#content').innerHTML=state.loginLoading?loginLoading():panel('กำลังโหลดข้อมูล…');
- const views={clock:clockView,dashboard:dashboardView,employees:employeesView,schedule:scheduleView,calendar:calendarView,reports:reportView,line:lineView,'my-leave':()=>personalRequestView('leave'),'clock-request':()=>personalRequestView('correction'),more:managementView,attendance:attendanceView,offices:async()=>{const d=await directory();return panel(table(['รหัส','สำนักงาน'],d.offices.map(o=>[o.office_code,o.name])))},leave:()=>requestsView('leave'),'clock-approvals':()=>requestsView('correction')};
+ const views={'hr-register':()=>window.KittyHRAccess.registration(state.boot.hrRegistration),clock:clockView,dashboard:dashboardView,employees:employeesView,schedule:scheduleView,calendar:calendarView,reports:reportView,line:lineView,'my-leave':()=>personalRequestView('leave'),'clock-request':()=>personalRequestView('correction'),more:managementView,settings:hrAccessView,attendance:attendanceView,offices:async()=>{const d=await directory();return panel(table(['รหัส','สำนักงาน'],d.offices.map(o=>[o.office_code,o.name])))},leave:()=>requestsView('leave'),'clock-approvals':()=>requestsView('correction')};
  try{const html=await (views[state.page]||unavailableView)();if(version===renderVersion){$('#content').innerHTML=html+(html.includes('title="ยังไม่เปิดการบันทึกในระบบทดลอง"')?'<p class="availability-note">ปุ่มสีเทายังไม่เปิดการบันทึกใน Staging · ใช้งานผ่านระบบเดิมได้ตามปกติ</p>':'');tick();if(state.page==='clock-request'&&$('#overtimeForm')?.elements)loadOvertimeBalance($('#overtimeForm [data-ot-balance]'))}}
  catch(e){if(version===renderVersion)$('#content').innerHTML=panel(`<h2>โหลดข้อมูลไม่สำเร็จ</h2><p>${esc(errorMessage(e))}</p><button class="btn primary" data-action="retry">ลองใหม่</button>`)}
 }
@@ -300,7 +320,7 @@ function toast(text){$('#toast').textContent=text;$('#toast').classList.add('sho
 
 const requestCache=new Map(),readMemory=new Map(),queueVersions=new Map(),settledRequests=new Map();
 function invalidateReviewedRequest(kind,id){const scope=requestScope();queueVersions.set(scope,(queueVersions.get(scope)||0)+1);const ids=settledRequests.get(scope)||new Set();ids.add(kind+':'+id);settledRequests.set(scope,ids);const cached=requestCache.get(scope);if(cached)requestCache.set(scope,{...cached,rows:cached.rows.filter(r=>!ids.has(requestKey(r)))});navigation()}
-function requestScope(){return state.boot?.profile?.userId ? 'kitty-request-read:'+state.boot.profile.userId+':'+state.role : null}
+function requestScope(){return state.boot?.profile?.userId ? 'kitty-request-read:'+(CONFIG.requestsLive?'live:':'staging:')+state.boot.profile.userId+':'+state.role : null}
 function readRequestIds(){const key=requestScope();if(!key)return new Set();const memory=readMemory.get(key)||[];try{const stored=JSON.parse(localStorage.getItem(key)||'[]');return new Set([...memory,...(Array.isArray(stored)?stored:[])])}catch{return new Set(memory)}}
 function requestKey(r){return r.kind+':'+r.id}
 function unreadRequests(kind){if(state.personal||!['hr','admin'].includes(state.role))return [];const ids=readRequestIds();return (requestCache.get(requestScope())?.rows||[]).filter(r=>r.id&&r.unread!==false&&requestCategory(r)===kind&&!ids.has(requestKey(r)))}
@@ -312,7 +332,7 @@ function overtimeDetails(r,label=r.status==='APPROVED'?'ใช้ชดแล้
 function overtimeDescription(r){return `${r.mode==='USE_PRIOR'?'ใช้ชั่วโมงเกิน':'ชดชั่วโมงขาด'} ${esc(overtimeState(r))} · ${esc(r.source_date||'—')} → ${esc(r.target_date||'—')}`}
 async function requestQueue(){
  const scope=requestScope(),version=(queueVersions.get(scope)||0)+1;queueVersions.set(scope,version);
- try{const [regular,ot,people]=await Promise.all([api('staging_request_queue'),api('staging_ot_queue'),api('staging_people_list')]);const data=combineQueues(regular,ot);data.rows.push(...(people.registrations||[]).map(r=>({...r,kind:'registration',employee:{name:r.name},reason:'รอ HR กรอกข้อมูลพนักงาน'})));data.rows=data.rows.filter(r=>(!r.status||r.status==='PENDING')&&!settledRequests.get(scope)?.has(requestKey(r)));if(version!==queueVersions.get(scope))return requestCache.get(scope)||{rows:[],warnings:[]};if(scope&&scope===requestScope()){requestCache.set(scope,data);navigation()}return data}
+ try{const [regular,ot,people]=await Promise.all([api('staging_request_queue'),trialApi('staging_ot_queue'),trialApi('staging_people_list')]);const data=combineQueues(regular,ot);data.rows.push(...(people.registrations||[]).map(r=>({...r,kind:'registration',employee:{name:r.name},reason:'รอ HR กรอกข้อมูลพนักงาน'})));data.rows=data.rows.filter(r=>(!r.status||r.status==='PENDING')&&!settledRequests.get(scope)?.has(requestKey(r)));if(version!==queueVersions.get(scope))return requestCache.get(scope)||{rows:[],warnings:[]};if(scope&&scope===requestScope()){requestCache.set(scope,data);navigation()}return data}
  catch(error){return {rows:[],warnings:[['STAGING_READ_ONLY','UNKNOWN_ACTION'].includes(error.message)?'รายการคำขอยังรอเปิดบริการอ่านข้อมูล':'โหลดคำขอไม่สำเร็จ: '+errorMessage(error)]}}
 }
 async function refreshRequestNotifications(){
@@ -330,12 +350,13 @@ async function refreshRequestNotifications(){
  }catch{/* Keep existing history and typed forms when background refresh fails. */}
  finally{refreshRequestNotifications.busy=false}
 }
+function liveRequest(kind){return CONFIG.requestsLive&&['leave','correction'].includes(kind)}
 function openRequest(key){
  const r=(requestCache.get(requestScope())?.rows||[]).find(r=>requestKey(r)===key);
  if(!r||state.personal||!['admin','hr'].includes(state.role))return;
  if(r.kind==='registration'){personnelEditor({registrationId:r.id});return}
  $('#actionTitle').textContent=r.kind==='leave'?'คำขอลา':r.kind==='overtime'?'ใช้โอที':'คำขอลงเวลา';
- $('#actionBody').innerHTML=`<h2>${esc(person(r.employee))}</h2><p>วันที่ ${esc(r.leave_date||r.work_date||'—')}</p><p>${r.kind==='overtime'?overtimeDescription(r):esc(r.kind==='leave'?leaveDescription(r):userLabel(r.requested_event_type))}</p>${r.kind==='overtime'?overtimeDetails(r):''}${r.requested_event_at?`<p>เวลาที่ขอ ${time(r.requested_event_at)}</p>`:''}<p class="request-reason">เหตุผล : ${esc(r.reason||'ไม่ระบุเหตุผล')}</p><p>คำขอทดลอง · การอนุมัติไม่แก้ข้อมูลลงเวลาเดิม</p><label class="field rejection-field" id="rejectionField" hidden>เหตุผลที่ปฏิเสธ<textarea id="reviewReason" maxlength="1000"></textarea></label><div class="request-shortcuts"><button class="btn primary" data-review-kind="${esc(r.kind)}" data-review-id="${esc(r.id)}" data-decision="APPROVED">อนุมัติทดลอง</button><button class="btn secondary" data-review-kind="${esc(r.kind)}" data-review-id="${esc(r.id)}" data-decision="REJECTED">ปฏิเสธ</button></div>`;
+ $('#actionBody').innerHTML=`<h2>${esc(person(r.employee))}</h2><p>วันที่ ${esc(r.leave_date||r.work_date||'—')}</p><p>${r.kind==='overtime'?overtimeDescription(r):esc(r.kind==='leave'?leaveDescription(r):userLabel(r.requested_event_type))}</p>${r.kind==='overtime'?overtimeDetails(r):''}${r.requested_event_at?`<p>เวลาที่ขอ ${time(r.requested_event_at)}</p>`:''}<p class="request-reason">เหตุผล : ${esc(r.reason||'ไม่ระบุเหตุผล')}</p><p>${liveRequest(r.kind)?'การอนุมัติมีผลกับข้อมูลลงเวลาจริง':'คำขอทดลอง · การอนุมัติไม่แก้ข้อมูลลงเวลาเดิม'}</p><label class="field rejection-field" id="rejectionField" hidden>เหตุผลที่ปฏิเสธ<textarea id="reviewReason" maxlength="1000"></textarea></label><div class="request-shortcuts"><button class="btn primary" data-review-kind="${esc(r.kind)}" data-review-id="${esc(r.id)}" data-decision="APPROVED">${liveRequest(r.kind)?'อนุมัติ':'อนุมัติทดลอง'}</button><button class="btn secondary" data-review-kind="${esc(r.kind)}" data-review-id="${esc(r.id)}" data-decision="REJECTED">ปฏิเสธ</button></div>`;
  $('#actionDialog').showModal();
  const ids=readRequestIds();ids.add(key);readMemory.set(requestScope(),[...ids]);try{localStorage.setItem(requestScope(),JSON.stringify([...ids]))}catch{}
  navigation();
@@ -349,10 +370,10 @@ function requestList(data,limit=1000){
 }
 async function requestsView(kind){
  const data=await requestQueue(),filtered={...data,rows:(data.rows||[]).filter(r=>requestCategory(r)===kind)};
- return panel(`<div class="section-heading"><h2>${kind==='leave'?'คำขอลา':'คำขอลงเวลา'}</h2><button class="btn secondary" data-action="retry">โหลดใหม่</button></div>${requestList(filtered)}<p class="panel-sub">ล่าสุดไม่เกิน 1,000 รายการ · ชุดทดลอง ไม่กระทบระบบเดิม</p>`)+(kind==='leave'?`<details class="panel"><summary>การลาที่บันทึกแล้ว</summary>${await leaveManagementView()}</details>`:'');
+ return panel(`<div class="section-heading"><h2>${kind==='leave'?'คำขอลา':'คำขอลงเวลา'}</h2><button class="btn secondary" data-action="retry">โหลดใหม่</button></div>${requestList(filtered)}<p class="panel-sub">ล่าสุดไม่เกิน 1,000 รายการ${CONFIG.requestsLive?' · ลาและแก้เวลามีผลจริง · OT ยังเป็นชุดทดลอง':' · ชุดทดลอง ไม่กระทบระบบเดิม'}</p>`)+(kind==='leave'?`<details class="panel"><summary>การลาที่บันทึกแล้ว</summary>${await leaveManagementView()}</details>`:'');
 }
 
-const requestErrors={OT_SCHEDULE_REQUIRED:'ยังไม่มีตารางงานครบสำหรับคู่วันทำงานนี้ กรุณาให้ HR ตรวจตาราง',OT_SOURCE_NOT_FINAL:'ต้องมีเวลาออกงานและสรุปเวลาสุทธิของวันที่นำชั่วโมงมาใช้ก่อน',OT_INSUFFICIENT_MINUTES:'ชั่วโมงที่ใช้ได้ไม่พอ หรือมีคำขอใช้ชั่วโมงนี้แล้ว',OT_WINDOW_EXPIRED:'ใช้ได้เฉพาะวันทำงานที่ติดกัน ไม่สามารถยกยอดมาใช้วันนี้ได้',OT_SCHEDULE_CHANGED:'ตารางงานเปลี่ยน กรุณาตรวจคู่วันและส่งคำขอใหม่',DUPLICATE_PENDING_REQUEST:'มีคำขอประเภทนี้ในวันเดียวกันรออนุมัติอยู่แล้ว',ALREADY_REVIEWED:'รายการนี้ถูกพิจารณาหรือยกเลิกแล้ว กรุณาโหลดใหม่',FUTURE_EVENT:'เวลาที่ขอยังมาไม่ถึง',REJECTION_REASON_REQUIRED:'กรุณาระบุเหตุผลที่ปฏิเสธ',FORBIDDEN:'คุณไม่มีสิทธิ์ดำเนินการกับคำขอนี้',REQUEST_SERVICE_ERROR:'บริการคำขอไม่พร้อม กรุณาลองใหม่',IDEMPOTENCY_CONFLICT:'ข้อมูลคำขอเปลี่ยนไป กรุณาส่งใหม่'};
+const requestErrors={WORK_SCHEDULE_REQUIRED:'ต้องมีตารางงานวันทำงานก่อนอนุมัติลา',HALF_DAY_REQUIRES_CLOCK:'ลาครึ่งวันใช้กับวันที่ลงเวลาทำงานเท่านั้น',LEAVE_ALREADY_APPROVED:'มีการลาอนุมัติในวันนี้แล้ว',EVENT_ALREADY_EXISTS:'มีการลงเวลาประเภทนี้แล้ว กรุณาให้แอดมินตรวจสอบ',INVALID_EVENT_ORDER:'เวลาที่ขอไม่สัมพันธ์กับลำดับเข้า พัก และออกงาน',USE_ADMIN_BRANCH_CORRECTION:'รายการสาขาของ BA ต้องให้แอดมินแก้ผ่านระบบเดิม',EMPLOYEE_INACTIVE:'พนักงานไม่ได้อยู่ในสถานะใช้งาน',OT_SCHEDULE_REQUIRED:'ยังไม่มีตารางงานครบสำหรับคู่วันทำงานนี้ กรุณาให้ HR ตรวจตาราง',OT_SOURCE_NOT_FINAL:'ต้องมีเวลาออกงานและสรุปเวลาสุทธิของวันที่นำชั่วโมงมาใช้ก่อน',OT_INSUFFICIENT_MINUTES:'ชั่วโมงที่ใช้ได้ไม่พอ หรือมีคำขอใช้ชั่วโมงนี้แล้ว',OT_WINDOW_EXPIRED:'ใช้ได้เฉพาะวันทำงานที่ติดกัน ไม่สามารถยกยอดมาใช้วันนี้ได้',OT_SCHEDULE_CHANGED:'ตารางงานเปลี่ยน กรุณาตรวจคู่วันและส่งคำขอใหม่',DUPLICATE_PENDING_REQUEST:'มีคำขอประเภทนี้ในวันเดียวกันรออนุมัติอยู่แล้ว',ALREADY_REVIEWED:'รายการนี้ถูกพิจารณาหรือยกเลิกแล้ว กรุณาโหลดใหม่',FUTURE_EVENT:'เวลาที่ขอยังมาไม่ถึง',REJECTION_REASON_REQUIRED:'กรุณาระบุเหตุผลที่ปฏิเสธ',FORBIDDEN:'คุณไม่มีสิทธิ์ดำเนินการกับคำขอนี้',REQUEST_SERVICE_ERROR:'บริการคำขอไม่พร้อม กรุณาลองใหม่',IDEMPOTENCY_CONFLICT:'ข้อมูลคำขอเปลี่ยนไป กรุณาส่งใหม่'};
 function workflowError(error){return requestErrors[error.message]||errorMessage(error)}
 
 function overtimeView(){return panel(`<h2>ใช้โอที</h2><form id="overtimeForm" class="request-form overtime-form"><label>รูปแบบ<select name="mode"><option value="USE_PRIOR">ใช้ชั่วโมงเกินจากวันทำงานก่อนหน้า</option><option value="MAKEUP_NEXT">ชดชั่วโมงขาดในวันทำงานถัดไป</option></select></label><label>วันที่<input type="date" name="date" value="${dateKey()}" max="${dateKey()}" required></label><button type="button" class="btn secondary" data-ot-balance>ตรวจเวลาทั้งสองวัน</button><div id="otBalance" role="status"><p>กำลังตรวจชั่วโมงที่ใช้ได้…</p></div><label>เหตุผล<textarea name="reason" maxlength="1000" required></textarea></label><p class="panel-sub">ใช้เฉพาะคู่วันทำงานที่ติดกัน ไม่สะสมข้ามวัน · คำขอทดลอง</p><button class="btn primary" type="submit" data-send-request="true">ส่งให้ HR</button></form>`)}
@@ -372,7 +393,7 @@ async function personalRequests(kind){const data=combineQueues(await api('stagin
 function personalHistory(rows){const pending=rows.filter(r=>r.status==='PENDING'),done=rows.filter(r=>r.status!=='PENDING');return '<h2>คำขอรออนุมัติ</h2>'+myRequestHistory(pending)+(done.length?`<details class="event-details"><summary>ประวัติคำขอที่พิจารณาแล้ว / ยกเลิก (${done.length})</summary>${myRequestHistory(done)}</details>`:'')}
 function myRequestHistory(rows){
  const status={PENDING:'รออนุมัติ',APPROVED:'อนุมัติทดลอง',REJECTED:'ปฏิเสธ',CANCELLED:'ยกเลิก'};
- return rows.map(r=>`<article class="request-item ${r.kind==='correction'&&r.approved_sequence_in_month>=3?'frequent-request':''}"><strong>${esc(r.work_date)} · ${status[r.status]||esc(userLabel(r.status))}</strong><p>${r.kind==='overtime'?overtimeDescription(r):r.kind==='leave'?esc(leaveDescription(r)):''}</p><p class="request-reason">เหตุผล : ${esc(r.reason)}</p>${r.review_reason?`<p>หมายเหตุ: ${esc(r.review_reason)}</p>`:''}${r.approved_sequence_in_month?`<p class="${r.approved_sequence_in_month>=3?'report-warning':''}">ครั้งที่ ${r.approved_sequence_in_month}</p>`:''}${r.status==='PENDING'?`<button class="btn secondary" data-request-kind="${esc(r.kind)}" data-cancel-request="${esc(r.id)}">ยกเลิกคำขอ</button>`:''}</article>`).join('')||empty('ยังไม่มีคำขอที่ส่งในชุดทดลอง');
+ return rows.map(r=>`<article class="request-item ${r.kind==='correction'&&r.approved_sequence_in_month>=3?'frequent-request':''}"><strong>${esc(r.work_date)} · ${r.status==='APPROVED'&&liveRequest(r.kind)?'อนุมัติแล้ว':status[r.status]||esc(userLabel(r.status))}</strong><p>${r.kind==='overtime'?overtimeDescription(r):r.kind==='leave'?esc(leaveDescription(r)):''}</p><p class="request-reason">เหตุผล : ${esc(r.reason)}</p>${r.review_reason?`<p>หมายเหตุ: ${esc(r.review_reason)}</p>`:''}${r.approved_sequence_in_month?`<p class="${r.approved_sequence_in_month>=3?'report-warning':''}">ครั้งที่ ${r.approved_sequence_in_month}</p>`:''}${r.status==='PENDING'?`<button class="btn secondary" data-request-kind="${esc(r.kind)}" data-cancel-request="${esc(r.id)}">ยกเลิกคำขอ</button>`:''}</article>`).join('')||empty(CONFIG.requestsLive?'ยังไม่มีคำขอที่ส่ง':'ยังไม่มีคำขอที่ส่งในชุดทดลอง');
 }
 
 async function sendDraft(button){
@@ -398,7 +419,7 @@ async function sendRequest(form,data,button){
  if(form.dataset.fingerprint!==fingerprint){form.dataset.clientId=crypto.randomUUID();form.dataset.fingerprint=fingerprint}
  payload.clientId=form.dataset.clientId;
  form.dataset.sending='true';button.disabled=true;const version=renderVersion;
- try{await api(kind==='overtime'?'staging_ot_submit':'staging_request_submit',payload);if(version===renderVersion){await render();toast('ส่งคำขอทดลองให้ HR แล้ว')}}catch(error){toast(workflowError(error))}finally{delete form.dataset.sending;button.disabled=false}
+ try{await api(kind==='overtime'?'staging_ot_submit':'staging_request_submit',payload);if(version===renderVersion){await render();toast(liveRequest(kind)?'ส่งคำขอให้ HR แล้ว':'ส่งคำขอทดลองให้ HR แล้ว')}}catch(error){toast(workflowError(error))}finally{delete form.dataset.sending;button.disabled=false}
 }
 async function reviewRequest(button){
  if(button.disabled)return;
@@ -406,12 +427,12 @@ async function reviewRequest(button){
  const reason=button.dataset.decision==='APPROVED'?'':($('#reviewReason')?.value||'').trim();
  if(button.dataset.decision==='REJECTED'&&!reason){toast('กรุณาระบุเหตุผลที่ปฏิเสธ');return}
  const buttons=document.querySelectorAll('[data-review-id]');buttons.forEach(b=>b.disabled=true);
- try{await api(button.dataset.reviewKind==='overtime'?'staging_ot_review':'staging_request_review',{id:button.dataset.reviewId,decision:button.dataset.decision,reviewReason:reason});invalidateReviewedRequest(button.dataset.reviewKind||'correction',button.dataset.reviewId);$('#actionDialog').close();$('#actionBody').innerHTML='';await render();toast('บันทึกผลพิจารณาในชุดทดลองแล้ว')}
+ try{await api(button.dataset.reviewKind==='overtime'?'staging_ot_review':'staging_request_review',{id:button.dataset.reviewId,decision:button.dataset.decision,reviewReason:reason});invalidateReviewedRequest(button.dataset.reviewKind||'correction',button.dataset.reviewId);$('#actionDialog').close();$('#actionBody').innerHTML='';await render();toast(liveRequest(button.dataset.reviewKind)?'บันทึกผลพิจารณาจริงแล้ว':'บันทึกผลพิจารณาในชุดทดลองแล้ว')}
  catch(error){toast(workflowError(error))}finally{buttons.forEach(b=>b.disabled=false)}
 }
 async function cancelRequest(button){
  button.disabled=true;
- try{await api(button.dataset.requestKind==='overtime'?'staging_ot_cancel':'staging_request_cancel',{id:button.dataset.cancelRequest});await render();toast('ยกเลิกคำขอทดลองแล้ว')}catch(error){toast(workflowError(error))}finally{button.disabled=false}
+ try{await api(button.dataset.requestKind==='overtime'?'staging_ot_cancel':'staging_request_cancel',{id:button.dataset.cancelRequest});await render();toast(liveRequest(button.dataset.requestKind)?'ยกเลิกคำขอแล้ว':'ยกเลิกคำขอทดลองแล้ว')}catch(error){toast(workflowError(error))}finally{button.disabled=false}
 }
 
 function profileFields(data){
@@ -441,6 +462,8 @@ async function showEmployee(id){
 }
 document.addEventListener('click',e=>{
  const b=e.target.closest('button');if(!b||b.disabled)return;
+ if(b.dataset.hrDecision){hrAccessDecision(b);return}
+ if(b.dataset.hrRefresh!==undefined){init();return}
  if(b.id==='selfProfileButton'){showSelfProfile();return}
  if(b.dataset.clockEvent){submitClock(b.dataset.clockEvent);return}
  if(b.dataset.clockRefresh!==undefined){refreshClock();return}
@@ -474,6 +497,7 @@ document.addEventListener('click',e=>{
 document.addEventListener('input',e=>{if(e.target.id==='employeeSearch'){state.employeeSearch=e.target.value;$('#employeeResults').innerHTML=employeeRows(filteredPeople())}});
 document.addEventListener('change',e=>{if(e.target.id==='employeeScope'){state.employeeScope=e.target.value;$('#employeeResults').innerHTML=employeeRows(filteredPeople())}if(e.target.closest?.('#overtimeForm')&&['mode','date'].includes(e.target.name))loadOvertimeBalance($('#overtimeForm [data-ot-balance]'));if(e.target.id==='reportScope'){state.reportScope=e.target.value;state.reportEmployee='';state.directory=null;render()}if(e.target.id==='reportEmployee'){state.reportEmployee=e.target.value;render()}if(e.target.id==='workDate'&&e.target.value){state.date=e.target.value;state.selected=state.date;state.month=state.date.slice(0,7);render()}if(e.target.id==='month'&&e.target.value){state.month=e.target.value;state.selected=state.month+'-01';if(state.page==='schedule')state.date=state.selected;render()}if(e.target.id==='reportType'){state.reportType=e.target.value;render()}if(e.target.id==='leaveDuration')$('#halfDayRule').hidden=e.target.value==='FULL_DAY'});
 document.addEventListener('submit',e=>{
+ if(e.target.id==='hrRegistrationForm'){e.preventDefault();submitHRRegistration(e.target);return}
  if(e.target.id==='signupForm'){e.preventDefault();submitSignup(e.target);return}
  if(e.target.id==='personnelForm'){e.preventDefault();savePersonnel(e.target);return}
  if(!['leaveForm','correctionForm','overtimeForm'].includes(e.target.id))return;e.preventDefault();
