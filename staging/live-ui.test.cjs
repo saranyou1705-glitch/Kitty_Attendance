@@ -278,7 +278,8 @@ test('OT form uses fresh balance instead of displaying a previous approved reque
  const {run,node}=setup(async(url)=>({ok:true,json:async()=>new URL(url).searchParams.get('action')==='staging_ot_balance'?{ok:true,settlement_state:'READY',minutes:0,available_minutes:0}:{ok:true,rows:[{id:'a',kind:'overtime',status:'APPROVED',settlement_state:'READY',mode:'USE_PRIOR',work_date:'2026-09-24',minutes:35}]}}));
  node('#overtimeForm').elements={mode:{value:'USE_PRIOR'},date:{value:'2026-09-24'}};
  await run("loadOvertimeBalance({disabled:false})");
- const html=node('#otBalance').innerHTML;assert(!html.includes('ใช้ชดแล้ว'));assert(!html.includes('0 ชม. 35 นาที'));assert(html.includes('อนุมัติแล้ว'));assert.equal((html.match(/class="ot-total"/g)||[]).length,0);
+ const html=node('#otBalance').innerHTML;assert.equal(html,'');
+ assert(run("personalHistory([{id:'a',kind:'overtime',status:'APPROVED',mode:'USE_PRIOR',reason:'kept in history'}])").includes('kept in history'));
 });
 test('monthly sandbox OT is scoped separately and includes current-day approval',async()=>{
  const ids=[];const {run}=setup(async(url,options)=>{ids.push(JSON.parse(options.body).employeeId);return {ok:true,json:async()=>({ok:true,rows:[{id:'a',kind:'overtime',status:'APPROVED',settlement_state:'READY',minutes:35}]})}});
