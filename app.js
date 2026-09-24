@@ -38,7 +38,8 @@ const clockTypes={'เข้างาน':'IN','ออกพัก':'BREAK_OUT',
 function clockButton(label,data){
  const event=clockTypes[label],allowed=window.KittyClock?.allowedActions(data.employee?.attendance_mode||state.boot?.employee?.attendance_mode,data.events||[])||[];
  const enabled=data.employee?.active===true&&allowed.includes(event)&&!state.clockBusy&&!state.clockRecorder?.uncertain;
- return `<button class="btn ${enabled?'primary':'secondary'}" data-clock-event="${event}" ${enabled?'':'disabled'}><span>${label}</span></button>`;
+ const icon={IN:'clock',BREAK_OUT:'coffee',BREAK_IN:'coffee',OUT:'logout',DAY_IN:'clock',DAY_OUT:'logout',BRANCH_IN:'offices',BRANCH_OUT:'logout'}[event];
+ return `<button class="btn ${enabled?'primary':'secondary'}" data-clock-event="${event}" ${enabled?'':'disabled'}>${uiIcon(icon||'clock')}<span>${label}</span></button>`;
 }
 function clockError(e){return ({GPS_INACCURATE:'พิกัด GPS ยังไม่แม่นยำ กรุณารอสักครู่แล้วลองใหม่',OUTSIDE_OFFICE:'คุณอยู่นอกพื้นที่สำนักงานหรือสาขาที่อนุญาต',OFFICE_NOT_CONFIGURED:'ยังไม่ได้กำหนดสำนักงานหรือพิกัด กรุณาติดต่อแอดมิน',EMPLOYEE_INACTIVE:'บัญชีพนักงานไม่ได้เปิดใช้งาน',ACTIVE_EMPLOYEE_REQUIRED:'บัญชีนี้ยังไม่มีพนักงานที่เปิดใช้งาน',ACTION_NOT_AVAILABLE:'สถานะการลงเวลาเปลี่ยนแล้ว กรุณาตรวจรายการล่าสุด',GPS_DENIED:'กรุณาอนุญาตตำแหน่งที่ตั้ง แล้วลองใหม่',INVALID_LOCATION:'อ่านพิกัดไม่สำเร็จ กรุณาลองใหม่',GPS_TIMEOUT:'อ่านตำแหน่งใช้เวลานาน กรุณาลองใหม่',RECONCILE_REQUIRED:'ต้องตรวจสถานะล่าสุดก่อนลงเวลาอีกครั้ง',SERVICE_UNAVAILABLE:'ยังยืนยันผลบันทึกไม่ได้ กรุณาตรวจสถานะล่าสุด',INVALID_STANDARD_SEQUENCE:'ลำดับลงเวลาเปลี่ยนแล้ว กรุณาตรวจสถานะ',INVALID_DRIVER_ACTION:'รายการนี้ลงเวลาแล้วหรือยังไม่ถึงลำดับ',INVALID_MULTI_BRANCH_SEQUENCE:'ลำดับเข้าสาขาเปลี่ยนแล้ว กรุณาตรวจสถานะ'})[e.message]||errorMessage(e)}
 function clockRecorder(){
