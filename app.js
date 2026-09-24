@@ -393,7 +393,7 @@ async function loadOvertimeBalance(button){
    const send=form.querySelector?.('[data-send-request]'),reason=form.querySelector?.('[name="reason"]');
    if(send)send.disabled=!!existing;
    if(reason){reason.disabled=!!existing;reason.closest('label').hidden=!!existing}
-   if(existing){$('#otBalance').innerHTML='<div class="ot-existing"><span class="request-status '+(existing.status==='APPROVED'?'request-approved':'')+'">'+(existing.status==='APPROVED'?'อนุมัติแล้ว':'รออนุมัติ')+'</span><p>'+requestDescription(existing)+'</p><p>เหตุผล : '+esc(existing.reason||'ไม่ระบุ')+'</p></div>';return}
+   if(existing){$('#otBalance').innerHTML='';return}
   }
   if(current())$('#otBalance').innerHTML=data.settlement_state==='READY'&&Number(data.available_minutes??data.minutes)===0
    ?'<p class="ot-empty">ไม่มีชั่วโมงที่ใช้ได้สำหรับคู่วันนี้</p>'+table(['วันทำงาน','เวลาสุทธิ','เวลาที่กำหนด'],[[data.source_date||'—',hours(data.source_paid_minutes==null?null:data.source_paid_minutes/60),hours(data.source_required_minutes==null?null:data.source_required_minutes/60)],[data.target_date||'—',hours(data.target_paid_minutes==null?null:data.target_paid_minutes/60),hours(data.target_required_minutes==null?null:data.target_required_minutes/60)]])
