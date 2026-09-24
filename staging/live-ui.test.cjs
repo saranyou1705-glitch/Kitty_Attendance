@@ -30,8 +30,17 @@ test('older OT response cannot overwrite a newer refresh',async()=>{
  node('#overtimeForm').elements={mode:{value:'USE_PRIOR'},date:{value:'2026-09-24'}};
  const first=run('loadOvertimeBalance({disabled:false})'),second=run('loadOvertimeBalance({disabled:false})');
  pending[1]({ok:true,json:async()=>({ok:true,settlement_state:'READY',available_minutes:90})});await second;
- pending[0]({ok:true,json:async()=>({ok:true,settlement_state:'READY',available_minutes:10})});await first;
- assert(node('#otBalance').innerHTML.includes('1 ชม. 30 นาที'));assert(!node('#otBalance').innerHTML.includes('0 ชม. 10 นาที'));
+ pending[0]({ok:false,json:async()=>({ok:false,error:'STALE_ERROR'})});await first;
+ assert.equal(node('#otBalance').innerHTML,'');assert(!node('#otBalance').textContent.includes('STALE_ERROR'));
+});
+test('OT form omits balance card and hours table while allowing a new request in both settlement states',async()=>{
+ for(const status of ['WAITING','READY']){
+  const {run,node}=setup(async url=>({ok:true,json:async()=>new URL(url).searchParams.get('action')==='staging_ot_mine'?{ok:true,rows:[]}:{ok:true,settlement_state:status,available_minutes:90}}));
+  const form=node('#overtimeForm'),send={disabled:true},label={hidden:false},reason={disabled:false,closest:()=>label};
+  form.elements={mode:{value:'USE_PRIOR'},date:{value:'2026-09-24'}};form.dataset={};form.querySelector=s=>s==='[data-send-request]'?send:reason;
+  await run('loadOvertimeBalance({disabled:false})');assert.equal(node('#otBalance').innerHTML,'');assert.equal(send.disabled,false);assert.equal(reason.disabled,false);assert.equal(form.dataset.otBlocked,'false');
+  const html=run('overtimeView()');assert(html.includes('data-send-request="true"'));assert(html.includes('name="reason"'));
+ }
 });
 test('real request notes retain real status in individual export',()=>{
  const {run}=setup();const result=run("mergeSandboxReport({rows:[{work_date:'2026-09-24'}]}, {rows:[{kind:'leave',work_date:'2026-09-24',sandbox:false},{kind:'overtime',work_date:'2026-09-24',sandbox:true}]} )");
