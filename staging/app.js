@@ -66,7 +66,7 @@ async function api(action,payload={}){
  const token=window.liff?.getAccessToken();if(!token)throw new Error('MISSING_LINE_TOKEN');
  const control=new AbortController(),timer=setTimeout(()=>control.abort(),20000);
  const request={...payload};if(state.role==='hr'&&action.startsWith('admin_')&&!action.startsWith('admin_hr_')||state.role==='hr'&&(action==='staging_schedule'||(action.startsWith('staging_request_')||action.startsWith('live_request_')||action.startsWith('staging_ot_')||action.startsWith('staging_people_'))))request.previewRole='HR';
- try{const r=await fetch(`${(['record','today','employee_month'].includes(action)||action.startsWith('live_request_')||(CONFIG.requestsLive&&(action==='bootstrap'||action==='hr_register'||action.startsWith('admin_hr_'))))?CONFIG.liveApi:CONFIG.api}?action=${encodeURIComponent(action)}`,{method:'POST',cache:'no-store',headers:{'Content-Type':'application/json','x-line-access-token':token},body:JSON.stringify(request),signal:control.signal});let data;try{data=await r.json()}catch{throw new Error(`บริการข้อมูลตอบกลับไม่สมบูรณ์ (${r.status})`)}if(!r.ok||!data.ok)throw new Error(data.message||data.error||`HTTP ${r.status}`);return data}finally{clearTimeout(timer)}
+ try{const r=await fetch(`${(['record','today','employee_month','admin_update_event'].includes(action)||action.startsWith('live_request_')||(CONFIG.requestsLive&&(action==='bootstrap'||action==='hr_register'||action.startsWith('admin_hr_'))))?CONFIG.liveApi:CONFIG.api}?action=${encodeURIComponent(action)}`,{method:'POST',cache:'no-store',headers:{'Content-Type':'application/json','x-line-access-token':token},body:JSON.stringify(request),signal:control.signal});let data;try{data=await r.json()}catch{throw new Error(`บริการข้อมูลตอบกลับไม่สมบูรณ์ (${r.status})`)}if(!r.ok||!data.ok)throw new Error(data.message||data.error||`HTTP ${r.status}`);return data}finally{clearTimeout(timer)}
 }
 function activeMenu(){if(state.connected&&state.boot&&!state.boot?.employee&&!state.boot?.isAdmin)return [];return state.personal?menus.employee:menus[state.role]}
 function loginRedirect(){const url=new URL('https://saranyou1705-glitch.github.io/Kitty_Attendance_Staging/');if(new URLSearchParams(location.search).get('view')==='hr')url.searchParams.set('view','hr');if(new URLSearchParams(location.search).get('register')==='hr')url.searchParams.set('register','hr');return url.href}
@@ -132,7 +132,7 @@ async function clockView(){
  const data=await api('today',{date:dateKey()}),daily=data.daily;
  const latest=(data.events||[]).slice().sort((a,b)=>String(a.event_at).localeCompare(String(b.event_at))).at(-1);
  const status=latest?({IN:'เข้างานแล้ว',CHECK_IN:'เข้างานแล้ว',BREAK_OUT:'กำลังพัก',BREAK_IN:'กลับจากพักแล้ว',DAY_IN:'เริ่มวันทำงานแล้ว',BRANCH_IN:'อยู่ที่สาขา',BRANCH_OUT:'ออกจากสาขาแล้ว',DAY_OUT:'จบวันทำงานแล้ว',OUT:'ออกงานแล้ว',CHECK_OUT:'ออกงานแล้ว'}[latest.event_type]||'มีการลงเวลาแล้ว'):'ยังไม่ลงเวลา';
- return `<div class="view-heading"><div><p class="page-context">${esc(person(state.boot.employee))}</p><h1>วันทำงานของฉัน</h1></div></div>${state.clockNotice?`<p class="live-clock-notice" role="status">${esc(state.clockNotice)}</p>`:''}<button class="btn secondary" data-clock-refresh ${state.clockBusy?'disabled':''}>ตรวจสถานะล่าสุด</button><div class="personal-clock-layout"><section class="panel clock-card"><p data-clock-date></p><div class="big-time" data-clock></div><span class="attendance-tag">${status}${latest?' · '+time(latest.event_at):''}</span>${['MULTI_BRANCH','DRIVER'].includes(state.boot.employee.attendance_mode)?'':`<div class="clock-actions">${clockButton('เข้างาน',data)}${clockButton('ออกพัก',data)}${clockButton('กลับจากพัก',data)}${clockButton('ออกงาน',data)}</div>`}</section><section class="panel clock-summary"><h2>เวลาของฉันวันนี้</h2>${[['เข้างาน',daily?.first_in_at],['ออกพัก',daily?.break_out_at],['กลับจากพัก',daily?.break_in_at],['ออกงาน',daily?.last_out_at]].map(([label,value])=>`<div class="time-line"><span>${label}</span><strong>${time(value)}</strong></div>`).join('')}<div class="time-line"><span>ทำงานสุทธิ</span><strong>${hours(daily?.paid_work_hours)}</strong></div></section></div>${occupationalView(state.boot.employee,data)}`;
+ return `<div class="view-heading"><div><p class="page-context">${esc(person(state.boot.employee))}</p><h1>วันทำงานของฉัน</h1></div></div>${state.clockNotice?`<p class="live-clock-notice" role="status">${esc(state.clockNotice)}</p>`:''}${state.clockRecorder?.uncertain?'<button class="btn secondary" data-clock-refresh>ตรวจผลบันทึกที่ยังไม่ยืนยัน</button>':''}<div class="personal-clock-layout"><section class="panel clock-card"><p data-clock-date></p><div class="big-time" data-clock></div><span class="attendance-tag">${status}${latest?' · '+time(latest.event_at):''}</span>${['MULTI_BRANCH','DRIVER'].includes(state.boot.employee.attendance_mode)?'':`<div class="clock-actions">${clockButton('เข้างาน',data)}${clockButton('ออกพัก',data)}${clockButton('กลับจากพัก',data)}${clockButton('ออกงาน',data)}</div>`}</section><section class="panel clock-summary"><h2>เวลาของฉันวันนี้</h2>${[['เข้างาน',daily?.first_in_at],['ออกพัก',daily?.break_out_at],['กลับจากพัก',daily?.break_in_at],['ออกงาน',daily?.last_out_at]].map(([label,value])=>`<div class="time-line"><span>${label}</span><strong>${time(value)}</strong></div>`).join('')}<div class="time-line"><span>ทำงานสุทธิ</span><strong>${hours(daily?.paid_work_hours)}</strong></div></section></div>${occupationalView(state.boot.employee,data)}`;
 }
 async function dashboardView(){
  const [d,requests]=await Promise.all([api('admin_daily',{date:state.date}),requestQueue()]);
@@ -385,7 +385,15 @@ async function loadOvertimeBalance(button){
  if(!date||!button)return;button.disabled=true;$('#otBalance').textContent='กำลังตรวจชั่วโมงที่ใช้ได้…';
  const current=()=>version===renderVersion&&requestVersion===otBalanceVersion&&form.elements.mode.value===mode&&form.elements.date.value===date;
  try{
-  const data=await api('staging_ot_balance',{mode,date});
+  const [data,mine]=await Promise.all([api('staging_ot_balance',{mode,date}),api('staging_ot_mine')]);
+  const existing=(mine.rows||[]).find(r=>r.mode===mode&&r.work_date===date&&['PENDING','APPROVED'].includes(r.status));
+  if(current()){
+   form.dataset&&(form.dataset.otBlocked=existing?'true':'false');
+   const send=form.querySelector?.('[data-send-request]'),reason=form.querySelector?.('[name="reason"]');
+   if(send)send.disabled=!!existing;
+   if(reason){reason.disabled=!!existing;reason.closest('label').hidden=!!existing}
+   if(existing){$('#otBalance').innerHTML='<p class="ot-empty">'+(existing.status==='APPROVED'?'คำขอนี้อนุมัติแล้ว ดูได้ในประวัติคำขอ':'ส่งคำขอนี้แล้ว กำลังรออนุมัติ')+'</p>';return}
+  }
   if(current())$('#otBalance').innerHTML=data.settlement_state==='READY'&&Number(data.available_minutes??data.minutes)===0
    ?'<p class="ot-empty">ไม่มีชั่วโมงที่ใช้ได้สำหรับคู่วันนี้</p>'+table(['วันทำงาน','เวลาสุทธิ','เวลาที่กำหนด'],[[data.source_date||'—',hours(data.source_paid_minutes==null?null:data.source_paid_minutes/60),hours(data.source_required_minutes==null?null:data.source_required_minutes/60)],[data.target_date||'—',hours(data.target_paid_minutes==null?null:data.target_paid_minutes/60),hours(data.target_required_minutes==null?null:data.target_required_minutes/60)]])
    :overtimeDetails(data,'ชั่วโมงที่ใช้ได้');
@@ -419,7 +427,7 @@ async function sendDraft(button){
 }
 
 async function sendRequest(form,data,button){
- if(form.dataset.sending)return;
+ if(form.dataset.sending||form.dataset.otBlocked==='true')return;
  if(form.id==='overtimeForm'){data={mode:data.mode,date:data.date,reason:data.reason}}
  const kind=form.id==='leaveForm'?'leave':form.id==='overtimeForm'?'overtime':'correction',events={'เข้างาน':'IN','ออกพัก':'BREAK_OUT','กลับจากพัก':'BREAK_IN','ออกงาน':'OUT'};
  const payload={...data,kind,event:kind==='correction'?events[data.event]:undefined};
@@ -466,8 +474,23 @@ async function showSelfProfile(){
 }
 async function showEmployee(id){
  const e=state.directory?.employees.find(e=>e.id===id);const version=renderVersion;
- try{const d=await api('admin_employee_day',{employeeId:id,date:state.date});if(version!==renderVersion)return;$('#actionTitle').textContent=e?person(e):'การลงเวลาพนักงาน';$('#actionBody').innerHTML=`<p>${displayDate(state.date)}</p>${eventsTable(d.events)}<p>สถานะตาราง: ${esc(scheduleLabel(d.schedule?.schedule_status))}</p><p>ชั่วโมงทำงาน: ${hours(d.daily?.paid_work_hours)}</p>`;$('#actionDialog').showModal()}catch(e){toast(errorMessage(e))}
+ try{const d=await api('admin_employee_day',{employeeId:id,date:state.date});if(version!==renderVersion)return;$('#actionTitle').textContent=e?person(e):'การลงเวลาพนักงาน';$('#actionBody').innerHTML=`<p>${displayDate(state.date)}</p>${eventsTable(d.events)}${state.role==='admin'&&!state.personal?adminEventForms(d.events,id):''}<p>สถานะตาราง: ${esc(scheduleLabel(d.schedule?.schedule_status))}</p><p>ชั่วโมงทำงาน: ${hours(d.daily?.paid_work_hours)}</p>`;$('#actionDialog').showModal()}catch(e){toast(errorMessage(e))}
 }
+
+function adminEventForms(events,employeeId){
+ return (events||[]).map(e=>'<form class="request-form admin-event-form" data-admin-event="'+esc(e.id)+'" data-employee-id="'+esc(employeeId)+'"><h3>'+esc(userLabel(e.event_type))+'</h3><label>วันที่<input name="date" type="date" required value="'+esc(e.work_date||state.date)+'"></label><label>เวลา<input name="time" type="time" required value="'+esc(time(e.event_at))+'"></label><label>เหตุผลที่แก้ไข<textarea name="reason" maxlength="1000" required></textarea></label><button class="btn primary" type="submit">บันทึกเวลาใหม่</button></form>').join('');
+}
+async function saveAdminEvent(form){
+ if(state.role!=='admin'||state.personal||form.dataset.saving)return;
+ const data=Object.fromEntries(new FormData(form)),eventAt=data.date+'T'+data.time+':00+07:00';
+ if(!data.reason.trim())return toast('กรุณาระบุเหตุผลที่แก้ไข');
+ if(!window.confirm('ยืนยันแก้เวลาจริงเป็น '+data.date+' '+data.time+' ?'))return;
+ form.dataset.saving='true';const button=form.querySelector('button');button.disabled=true;
+ try{await api('admin_update_event',{eventId:form.dataset.adminEvent,eventAt,reason:data.reason});toast('บันทึกและคำนวณเวลาใหม่แล้ว');await showEmployee(form.dataset.employeeId)}
+ catch(e){toast('ยังยืนยันผลไม่ได้ กรุณาปิดแล้วเปิดข้อมูลล่าสุดก่อนแก้ซ้ำ: '+errorMessage(e))}
+ finally{delete form.dataset.saving;button.disabled=false}
+}
+
 document.addEventListener('click',e=>{
  const b=e.target.closest('button');if(!b||b.disabled)return;
  if(b.dataset.hrDecision){hrAccessDecision(b);return}
@@ -505,6 +528,7 @@ document.addEventListener('click',e=>{
 document.addEventListener('input',e=>{if(e.target.id==='employeeSearch'){state.employeeSearch=e.target.value;$('#employeeResults').innerHTML=employeeRows(filteredPeople())}});
 document.addEventListener('change',e=>{if(e.target.id==='employeeScope'){state.employeeScope=e.target.value;$('#employeeResults').innerHTML=employeeRows(filteredPeople())}if(e.target.closest?.('#overtimeForm')&&['mode','date'].includes(e.target.name))loadOvertimeBalance($('#overtimeForm [data-ot-balance]'));if(e.target.id==='reportScope'){state.reportScope=e.target.value;state.reportEmployee='';state.directory=null;render()}if(e.target.id==='reportEmployee'){state.reportEmployee=e.target.value;render()}if(e.target.id==='workDate'&&e.target.value){state.date=e.target.value;state.selected=state.date;state.month=state.date.slice(0,7);render()}if(e.target.id==='month'&&e.target.value){state.month=e.target.value;state.selected=state.month+'-01';if(state.page==='schedule')state.date=state.selected;render()}if(e.target.id==='reportType'){state.reportType=e.target.value;render()}if(e.target.id==='leaveDuration')$('#halfDayRule').hidden=e.target.value==='FULL_DAY'});
 document.addEventListener('submit',e=>{
+ if(e.target.dataset.adminEvent){e.preventDefault();saveAdminEvent(e.target);return}
  if(e.target.id==='hrRegistrationForm'){e.preventDefault();submitHRRegistration(e.target);return}
  if(e.target.id==='signupForm'){e.preventDefault();submitSignup(e.target);return}
  if(e.target.id==='personnelForm'){e.preventDefault();savePersonnel(e.target);return}

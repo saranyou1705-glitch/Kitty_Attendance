@@ -1,4 +1,16 @@
 const {test}=require('node:test');
+test('only actual Admin can edit a real event; Bangkok date and actor token preserved',async()=>{
+ const p={eventId:'11111111-1111-4111-8111-111111111111',eventAt:'2026-09-24T08:30:00+07:00',reason:'Correction'};
+ for(const role of ['HR','EMPLOYEE'])await assert.rejects(setup(role).handle('token','admin_update_event',p),/ADMIN_REQUIRED/);
+ const {handle,calls}=setup('ADMIN');await handle('token','admin_update_event',p);
+ assert.equal(calls.at(-1)[1],'token');assert.equal(calls.at(-1)[2],'admin_update_event');assert.equal(calls.at(-1)[3].eventAt,p.eventAt);
+ await assert.rejects(handle('token','admin_update_event',{...p,previewRole:'HR'}),/ADMIN_REQUIRED/);
+ await assert.rejects(handle('token','admin_update_event',{...p,eventAt:'2026-09-24T01:30:00Z'}),/INVALID_FIELDS/);
+});
+test('Office cannot check out before break completion through live gateway',async()=>{
+ let written=false;const {handle}=setup('EMPLOYEE',{legacy:async(token,action)=>action==='bootstrap'?{ok:true,employee:{active:true,attendance_mode:'STANDARD'}}:action==='today'?{ok:true,events:[{event_type:'IN',event_at:'2026-09-24T02:00:00Z'}]}:(written=true,{ok:true})});
+ await assert.rejects(handle('token','record',{...payload,eventType:'OUT'}),/INVALID_STANDARD_SEQUENCE/);assert.equal(written,false);
+});
 const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
 const ts=require(process.env.TYPESCRIPT_MODULE||'typescript');
 const source=ts.transpileModule(fs.readFileSync(__dirname+'/live-gateway.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
@@ -22,7 +34,7 @@ test('verified LINE identity is authoritative for registration and approval',asy
 test('HR cannot proxy privileged legacy methods or arbitrary actions',async()=>{
  for(const role of ['HR','EMPLOYEE','ADMIN']){
   const {handle,calls}=setup(role);
-  for(const action of ['admin_report_send','admin_update_event','admin_bootstrap','cron_report_send','constructor','toString'])
+  for(const action of ['admin_report_send','admin_bootstrap','cron_report_send','constructor','toString'])
    await assert.rejects(handle('token',action,{}),/ACTION_NOT_CONNECTED/);
   assert.equal(calls.filter(c=>c[0]==='legacy').length,0);
  }

@@ -2,10 +2,10 @@ const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const {allowedActions,createRecorder}=require('./attendance-client.cjs');
 const events=(...types)=>types.map((event_type,i)=>({event_type,event_at:String(i).padStart(2,'0')}));
-test('standard and stock refill match server sequences including direct checkout',()=>{
+test('standard and stock refill match server sequences requiring break completion',()=>{
  for(const mode of ['STANDARD','STOCK_REFILL']){
   assert.deepEqual(allowedActions(mode,[]),['IN']);
-  assert.deepEqual(allowedActions(mode,events('IN')),['BREAK_OUT','OUT']);
+  assert.deepEqual(allowedActions(mode,events('IN')),['BREAK_OUT']);
   assert.deepEqual(allowedActions(mode,events('IN','BREAK_OUT')),['BREAK_IN']);
   assert.deepEqual(allowedActions(mode,events('IN','BREAK_OUT','BREAK_IN')),['OUT']);
   assert.deepEqual(allowedActions(mode,events('IN','OUT')),[]);

@@ -3,8 +3,13 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const vm=require('node:vm');
 const source=fs.readFileSync(__dirname+'/app.js','utf8').replace('navigation();init();','');
+test('Admin event editor is present only in Admin workspace',async()=>{
+ const {run,node}=setup(async()=>({ok:true,json:async()=>({ok:true,events:[{id:'event',event_type:'IN',work_date:'2026-09-24',event_at:'2026-09-24T02:30:00Z'}]})}));
+ run("state.role='admin';state.date='2026-09-24'");await run("showEmployee('self')");assert(node('#actionBody').innerHTML.includes('data-admin-event="event"'));assert(node('#actionBody').innerHTML.includes('09:30'));
+ run("state.role='hr'");await run("showEmployee('self')");assert(!node('#actionBody').innerHTML.includes('data-admin-event'));
+});
 test('older OT response cannot overwrite a newer refresh',async()=>{
- const pending=[];const {run,node}=setup(()=>new Promise(resolve=>pending.push(resolve)));
+ const pending=[];const {run,node}=setup(url=>new URL(url).searchParams.get('action')==='staging_ot_mine'?Promise.resolve({ok:true,json:async()=>({ok:true,rows:[]})}):new Promise(resolve=>pending.push(resolve)));
  node('#overtimeForm').elements={mode:{value:'USE_PRIOR'},date:{value:'2026-09-24'}};
  const first=run('loadOvertimeBalance({disabled:false})'),second=run('loadOvertimeBalance({disabled:false})');
  pending[1]({ok:true,json:async()=>({ok:true,settlement_state:'READY',available_minutes:90})});await second;
@@ -256,7 +261,7 @@ test('OT form uses fresh balance instead of displaying a previous approved reque
  const {run,node}=setup(async(url)=>({ok:true,json:async()=>new URL(url).searchParams.get('action')==='staging_ot_balance'?{ok:true,settlement_state:'READY',minutes:0,available_minutes:0}:{ok:true,rows:[{id:'a',kind:'overtime',status:'APPROVED',settlement_state:'READY',mode:'USE_PRIOR',work_date:'2026-09-24',minutes:35}]}}));
  node('#overtimeForm').elements={mode:{value:'USE_PRIOR'},date:{value:'2026-09-24'}};
  await run("loadOvertimeBalance({disabled:false})");
- const html=node('#otBalance').innerHTML;assert(!html.includes('ใช้ชดแล้ว'));assert(!html.includes('0 ชม. 35 นาที'));assert(html.includes('ไม่มีชั่วโมงที่ใช้ได้'));assert.equal((html.match(/class="ot-total"/g)||[]).length,0);
+ const html=node('#otBalance').innerHTML;assert(!html.includes('ใช้ชดแล้ว'));assert(!html.includes('0 ชม. 35 นาที'));assert(html.includes('คำขอนี้อนุมัติแล้ว'));assert.equal((html.match(/class="ot-total"/g)||[]).length,0);
 });
 test('monthly sandbox OT is scoped separately and includes current-day approval',async()=>{
  const ids=[];const {run}=setup(async(url,options)=>{ids.push(JSON.parse(options.body).employeeId);return {ok:true,json:async()=>({ok:true,rows:[{id:'a',kind:'overtime',status:'APPROVED',settlement_state:'READY',minutes:35}]})}});
@@ -336,7 +341,7 @@ test('real clock enables only valid actions for active employees and blocks unce
  run("var d={employee:{active:true,attendance_mode:'STANDARD'},events:[]}");
  assert(!run("clockButton('เข้างาน',d)").includes('disabled'));assert(run("clockButton('ออกพัก',d)").includes('disabled'));
  run("d.events=[{event_type:'IN',event_at:'2026-09-24T02:00:00Z'}]");
- assert(!run("clockButton('ออกพัก',d)").includes('disabled'));assert(!run("clockButton('ออกงาน',d)").includes('disabled'));
+ assert(!run("clockButton('ออกพัก',d)").includes('disabled'));assert(run("clockButton('ออกงาน',d)").includes('disabled'));
  run("state.clockRecorder={uncertain:true}");assert(run("clockButton('ออกพัก',d)").includes('disabled'));
 });
 test('preview BA controls cannot send a real attendance event',()=>{
