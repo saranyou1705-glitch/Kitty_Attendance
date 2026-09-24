@@ -42,7 +42,7 @@ test('report defaults to active employees and all-status never widens HR exclusi
 test('all employees report combines permitted active records and aborts on a failed employee',async()=>{
  let fail=false;const calls=[];const {run}=setup(async(url,options)=>{const body=JSON.parse(options.body);calls.push(body.employeeId);if(fail&&body.employeeId==='b')throw Error('offline');return {ok:true,json:async()=>({ok:true,employee:{id:body.employeeId,active:true,name:body.employeeId},month:'2026-09',warnings:[],rows:[{work_date:'2026-09-01'}],generated_at:'2026-09-22T00:00:00Z'})}});
  run("state.role='admin';state.page='reports';state.month='2026-09';state.reportEmployee='ALL';state.directory={employees:[{id:'a',active:true},{id:'b',active:true},{id:'old',active:false}]} ");
- const html=await run('individualReportView()');assert(html.includes('2 คน'));assert.deepEqual(calls,['a','b','a','b']);assert.equal(run('state.individualReport.rows.length'),2);assert.equal(run('state.individualReport.combined'),true);
+ const html=await run('individualReportView()');assert(html.includes('2 คน'));assert.deepEqual(calls,['a','b','a','b','a','b']);assert.equal(run('state.individualReport.rows.length'),2);assert.equal(run('state.individualReport.combined'),true);
  fail=true;await assert.rejects(run('individualReportView()'),/offline/);assert.equal(run('state.individualReport'),null);
 });
 test('pink dashboard uses actual counts and preserves role-scoped management actions',async()=>{
@@ -51,7 +51,7 @@ test('pink dashboard uses actual counts and preserves role-scoped management act
  run("state.role='hr'");const hr=await run('dashboardView()');assert(hr.includes('Head Office'));assert(!hr.includes('LINE Report'));assert(hr.includes('data-page="clock-approvals"'));
 });
 test('personal clock matches split-card structure and uses real work duration',async()=>{
- const {run}=setup(async()=>({ok:true,json:async()=>({ok:true,events:[{event_type:'BREAK_OUT',event_at:'2026-09-22T05:00:00Z'}],daily:{first_in_at:'2026-09-22T02:00:00Z',break_out_at:'2026-09-22T05:00:00Z',paid_work_hours:3.25}})}));run("state.boot={employee:{id:'self',name:'Real employee'}}");const html=await run('clockView()');assert(html.includes('personal-clock-layout'));assert(html.includes('panel clock-card'));assert(html.includes('panel clock-summary'));assert(html.includes('3 ชม. 15 นาที'));assert(html.includes('กำลังพัก'));assert(html.includes('ประวัติการลงเวลาทั้งหมด'));
+ const {run}=setup(async()=>({ok:true,json:async()=>({ok:true,events:[{event_type:'BREAK_OUT',event_at:'2026-09-22T05:00:00Z'}],daily:{first_in_at:'2026-09-22T02:00:00Z',break_out_at:'2026-09-22T05:00:00Z',paid_work_hours:3.25}})}));run("state.boot={employee:{id:'self',name:'Real employee'}}");const html=await run('clockView()');assert(html.includes('personal-clock-layout'));assert(html.includes('panel clock-card'));assert(html.includes('panel clock-summary'));assert(html.includes('3 ชม. 15 นาที'));assert(html.includes('กำลังพัก'));assert(!html.includes('ประวัติการลงเวลาทั้งหมด'));
 });
 test('attendance list keeps employee IDs, escapes names and has no fabricated people',()=>{
  const {run}=setup();const html=run("attendancePeople([{employee_id:'id1',employee:{name:'<script>',employee_code:'HO001'},first_in_at:'2026-09-22T02:00:00Z'}])");assert(html.includes('data-employee="id1"'));assert(html.includes('&lt;script&gt;'));assert(html.includes('09:00'));assert(!html.includes('พนักงานตัวอย่าง'));
@@ -136,4 +136,26 @@ test('sandbox send retries use same client ID and never accept a forged employee
  run("var testForm={id:'correctionForm',dataset:{}};var testButton={disabled:false};var testData={date:'2026-09-22',event:'เข้างาน',time:'09:00',reason:'test'}");
  await run('sendRequest(testForm,testData,testButton)');fail=false;await run('sendRequest(testForm,testData,testButton)');
  assert.equal(calls[0].action,'staging_request_submit');assert.equal(calls[0].body.clientId,calls[1].body.clientId);assert.equal(calls[0].body.event,'IN');assert.equal(calls[0].body.employeeId,undefined);assert.equal(run('testButton.disabled'),false);
+});
+test('calendar hides month totals and expandable event history',async()=>{
+ const {run}=setup(async()=>({ok:true,json:async()=>({ok:true,rows:[],events:[],daily:{paid_work_hours:4}})}));run("state.boot={employee:{id:'self'}}");
+ const html=await run('calendarView()');assert(!html.includes('calendar-summary'));assert(!html.includes('ประวัติการลงเวลา'));assert(html.includes('4 ชม. 0 นาที'));
+});
+test('correction copy hides fee text and approved third request is red',()=>{
+ const {run}=setup();const html=run('correctionView()');assert(html.includes('ส่งให้ HR'));assert(!html.includes('HR / Admin'));assert(!html.includes('200'));
+ assert(run("myRequestHistory([{kind:'correction',status:'APPROVED',approved_sequence_in_month:3}])").includes('frequent-request'));
+ assert(!run("myRequestHistory([{kind:'correction',status:'APPROVED',approved_sequence_in_month:2}])").includes('frequent-request'));
+});
+test('sending a saved leave draft preserves it on failure and removes it only after success',async()=>{
+ let fail=true;const calls=[];const {run}=setup(async(url,options)=>{calls.push(JSON.parse(options.body));return {ok:!fail,json:async()=>fail?{ok:false,error:'REQUEST_SERVICE_ERROR'}:{ok:true}}});
+ run("state.boot={employee:{id:'one'}};sessionStorage.setItem(draftKey(),JSON.stringify([{id:'00000000-0000-4000-8000-000000000001',kind:'leave',date:'2026-09-24',type:'ลากิจ',duration:'HALF_DAY_AM',reason:'test'}]));var savedButton={dataset:{sendDraft:'00000000-0000-4000-8000-000000000001'},disabled:false}");
+ assert(run("draftHistory('leave')").includes('data-send-draft'));
+ await run('sendDraft(savedButton)');assert.equal(run('drafts().length'),1);
+ fail=false;await run('sendDraft(savedButton)');assert.equal(run('drafts().length'),0);
+ assert.equal(calls[0].clientId,calls[1].clientId);assert.equal(calls[1].duration,'HALF_DAY_AM');
+});
+test('OT belongs to correction queue and unread badge, never correction penalty count',()=>{
+ const {run}=setup();run("state.role='hr';state.boot={profile:{userId:'one'}};requestCache.set(requestScope(),{rows:[{id:'ot1',kind:'overtime',mode:'MAKEUP_NEXT'}]})");
+ assert.equal(run("unreadRequests('correction').length"),1);assert.equal(run("unreadRequests('leave').length"),0);
+ const html=run('overtimeView()');assert(html.includes('USE_PRIOR'));assert(html.includes('MAKEUP_NEXT'));assert(html.includes('ส่งให้ HR'));
 });

@@ -21,6 +21,8 @@ const STAGING_REQUEST_ACTIONS:Record<string,string> = {
   staging_request_submit:"submit", staging_request_review:"review",
   staging_request_cancel:"cancel", staging_request_mine:"mine",
   staging_request_queue:"queue", staging_request_report:"report",
+  staging_ot_submit:"submit",staging_ot_balance:"balance",staging_ot_review:"review",
+  staging_ot_cancel:"cancel",staging_ot_mine:"mine",staging_ot_queue:"queue",staging_ot_report:"report",
 };
 const STAGING_READ_ACTIONS = new Set([
   "bootstrap",
@@ -1249,13 +1251,14 @@ Deno.serve(async (req) => {
     if (Object.prototype.hasOwnProperty.call(STAGING_REQUEST_ACTIONS,action)) {
       const operation=STAGING_REQUEST_ACTIONS[action];
       if (["review","queue","report"].includes(operation) && !admin) return json({ok:false,error:"FORBIDDEN"},403);
-      if (["submit","cancel","mine"].includes(operation) && !employee) return json({ok:false,error:"EMPLOYEE_REQUIRED"},403);
-      const {data,error}=await supabase.rpc("kitty_staging_request_v1",{
+      if (["submit","cancel","mine","balance"].includes(operation) && !employee) return json({ok:false,error:"EMPLOYEE_REQUIRED"},403);
+      const {data,error}=await supabase.rpc(action.startsWith("staging_ot_")?"kitty_staging_overtime_v1":"kitty_staging_request_v1",{
         actor:profile.userId,operation,payload:{...body,previewRole:isHR?"HR":undefined},
       });
       if(error) {
         const known=["FORBIDDEN","UNAUTHENTICATED","AMBIGUOUS_IDENTITY","EMPLOYEE_REQUIRED","INVALID_REQUEST","INVALID_DATE","INVALID_LEAVE","INVALID_EVENT","FUTURE_EVENT","IDEMPOTENCY_CONFLICT","NOT_FOUND","INVALID_DECISION","REJECTION_REASON_REQUIRED","INVALID_REASON","ALREADY_REVIEWED","INVALID_REPORT"];
-        const message=known.includes(error.message)?error.message:error.code==="23505"?"DUPLICATE_PENDING_REQUEST":"REQUEST_SERVICE_ERROR";
+        const otErrors=["INVALID_OT_MODE","OT_SCHEDULE_REQUIRED","OT_SOURCE_NOT_FINAL","OT_WINDOW_EXPIRED","OT_INSUFFICIENT_MINUTES","OT_SCHEDULE_CHANGED"];
+        const message=known.includes(error.message)||otErrors.includes(error.message)?error.message:error.code==="23505"?"DUPLICATE_PENDING_REQUEST":"REQUEST_SERVICE_ERROR";
         const status=["FORBIDDEN","UNAUTHENTICATED","AMBIGUOUS_IDENTITY"].includes(message)?403:message==="NOT_FOUND"?404:["ALREADY_REVIEWED","DUPLICATE_PENDING_REQUEST","IDEMPOTENCY_CONFLICT"].includes(message)?409:message==="REQUEST_SERVICE_ERROR"?503:400;
         return json({ok:false,error:message},status);
       }

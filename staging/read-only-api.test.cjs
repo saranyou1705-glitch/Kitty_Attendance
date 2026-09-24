@@ -70,3 +70,9 @@ test('employee cannot invoke isolated review and HR preview is fixed server-side
  assert.equal(call.payload.previewRole,'HR');
  const r=await request('staging_request_review','ADMIN',{},false,{rpc:async()=>({error:{message:'ALREADY_REVIEWED'}})});assert.equal(r.status,409);
 });
+test('OT actions route only to isolated OT RPC and retain HR scope',async()=>{
+ let call;const r=await request('staging_ot_submit','HR',{previewRole:'ADMIN',actor:'forged'},false,{rpc:async(name,args)=>{call={name,args};return {data:{ok:true},error:null}}});
+ assert.equal(r.status,200);assert.equal(call.name,'kitty_staging_overtime_v1');assert.equal(call.args.actor,'user');assert.equal(call.args.payload.previewRole,'HR');
+ assert.equal((await request('staging_ot_review',null)).status,403);
+ const invalid=await request('staging_ot_submit','HR',{},false,{rpc:async()=>({error:{message:'OT_INSUFFICIENT_MINUTES'}})});assert.equal(invalid.status,400);assert.equal(invalid.data.error,'OT_INSUFFICIENT_MINUTES');
+});

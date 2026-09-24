@@ -9,7 +9,7 @@
  function notes(row){
   const lines=row.schedule_note?[`หมายเหตุตาราง: ${row.schedule_note}`]:[];
   for(const r of row.requests||[]){
-   const kind=r.kind==='leave'?`ขอลา ${duration[r.duration]||r.duration||''}`:`ขอแก้เวลา ${events[r.requested_event_type]||r.requested_event_type||''} ${clock(r.requested_event_at)}`;
+   const kind=r.kind==='overtime'?`ใช้โอที · ${r.mode==='USE_PRIOR'?'ใช้ชั่วโมงเกิน':'ชดชั่วโมงขาด'} ${Math.floor(Number(r.minutes)/60)} ชม. ${Number(r.minutes)%60} นาที · ${r.source_date} → ${r.target_date}`:r.kind==='leave'?`ขอลา ${duration[r.duration]||r.duration||''}`:`ขอแก้เวลา ${events[r.requested_event_type]||r.requested_event_type||''} ${clock(r.requested_event_at)}`;
    const submitted=r.created_at?`${day(r.created_at)} ${clock(r.created_at)}`:'ไม่ระบุ';
    let text=`${r.sandbox?'[ทดลอง] ':''}${kind} · ${status[r.status]||r.status} · สำหรับวันที่ ${r.effective_date} · ส่ง ${submitted}`;
    if(r.kind==='correction'&&r.status==='APPROVED'){
