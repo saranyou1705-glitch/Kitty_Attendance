@@ -183,3 +183,22 @@ test('overview has six cards including off and current break without hiding zero
  run("state.role='admin'");
  const html=await run('dashboardView()');assert.equal((html.match(/class="stat-card"/g)||[]).length,6);assert(html.includes('วันหยุด</span><strong>3'));assert(html.includes('กำลังพัก</span><strong>4'));assert(html.includes('ยังไม่เข้างาน</span><strong>0'));
 });
+test('OT amount is prominent and incomplete attendance is not presented as zero',()=>{
+ const {run}=setup();const html=run("overtimeDetails({settlement_state:'READY',minutes:45,available_minutes:45})");
+ assert(html.includes('ชั่วโมงที่ใช้ได้'));assert(html.includes('<strong>0 ชม. 45 นาที</strong>'));
+ assert(run("overtimeDetails({settlement_state:'WAITING',minutes:null})").includes('ยังสรุปไม่ได้'));
+});
+test('HR approval sends immediately with empty review reason and requester reason is labelled',async()=>{
+ const calls=[];const {run,node}=setup(async(url,options)=>{calls.push({action:new URL(url).searchParams.get('action'),body:JSON.parse(options.body)});return {ok:true,json:async()=>({ok:true})}});
+ node('#actionDialog').close=()=>{};node('#reviewReason').value='stale text';
+ run("state.role='hr';state.boot={profile:{userId:'hr'}};requestCache.set(requestScope(),{rows:[{id:'ot',kind:'overtime',reason:'Need rest'}]});openRequest('overtime:ot')");
+ assert(node('#actionBody').innerHTML.includes('เหตุผล : Need rest'));
+ assert(node('#actionBody').innerHTML.includes('id="rejectionField" hidden'));
+ await run("reviewRequest({disabled:false,dataset:{reviewKind:'overtime',reviewId:'ot',decision:'APPROVED'}})");
+ assert.equal(calls[0].action,'staging_ot_review');assert.equal(calls[0].body.reviewReason,'');assert.equal(calls[0].body.decision,'APPROVED');
+});
+test('own correction history also displays submitted OT requests',async()=>{
+ const {run}=setup(async(url)=>({ok:true,json:async()=>({ok:true,rows:new URL(url).searchParams.get('action')==='staging_ot_mine'?[{kind:'overtime',reason:'OT reason',status:'PENDING'}]:[]})}));
+ const html=await run("personalRequestView('correction')");assert(html.includes('เหตุผล : OT reason'));
+ assert(source.includes("loadOvertimeBalance($('#overtimeForm [data-ot-balance]'))"));
+});
