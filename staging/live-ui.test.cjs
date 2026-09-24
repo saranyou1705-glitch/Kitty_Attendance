@@ -286,9 +286,9 @@ test('HR cannot open a blank personnel editor and approval is explicit',async()=
  run("state.role='hr'");await run('personnelEditor()');assert.equal(calls,0);
  await run("personnelEditor({registrationId:'r'})");assert(node('#actionBody').innerHTML.includes('บันทึกและอนุมัติพนักงานใหม่'));assert.equal(run('state.personnelEdit.approveRegistration'),true);
 });
-test('self profile avatar uses LINE picture and own form edits only contact fields',async()=>{
+test('self profile retains avatar and personal details without contact fields or edit form',async()=>{
  const calls=[];const {run,node}=setup(async(url)=>{calls.push(new URL(url).searchParams.get('action'));return {ok:true,json:async()=>({ok:true,version:2,employee:{name:'Me',employee_code:'HO001',phone:'0812345678',email:'a@example.com',weekly_dayoffs:[]}})}});
  run("state.connected=true;state.boot={employee:{name:'Me'},profile:{pictureUrl:'https://example.com/me.jpg'}};navigation()");
  assert(node('#selfProfileButton').innerHTML.includes('https://example.com/me.jpg'));
- await run('showSelfProfile()');const html=node('#actionBody').innerHTML;assert(html.includes('name="phone"'));assert(html.includes('name="email"'));assert(!html.includes('name="employee_code"'));assert.deepEqual(calls,['staging_self_profile']);
+ await run('showSelfProfile()');const html=node('#actionBody').innerHTML;assert(!html.includes('โทรศัพท์'));assert(!html.includes('อีเมล'));assert(!html.includes('0812345678'));assert(!html.includes('a@example.com'));assert(!html.includes('<form'));assert(html.includes('HO001'));assert(!html.includes('name="employee_code"'));assert.deepEqual(calls,['staging_self_profile']);
 });

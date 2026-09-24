@@ -392,7 +392,7 @@ function profileFields(data){
  const e=data.employee,offKeys=['weekly_dayoffs','weekly_dayoff','weekly_days_off','weekly_off_days','day_off'];
  const value=offKeys.find(k=>e[k]!==undefined&&e[k]!==null);
  const dayoff=value?(Array.isArray(e[value])?(e[value].map(v=>userLabel(v,'ไม่ระบุวัน')).join(', ')||'ไม่ได้กำหนดวันหยุดประจำสัปดาห์'):userLabel(e[value],'ไม่ระบุวัน')):'ยังไม่มีข้อมูลวันหยุดประจำสัปดาห์จากระบบ';
- return [['รหัสพนักงาน',e.employee_code],['ชื่อ',e.name],['สถานะ',e.active===true?'ใช้งานอยู่':e.active===false?'ปิดใช้งาน':'ไม่ระบุ'],['รูปแบบลงเวลา',userLabel(e.attendance_mode)],['LINE User ID',Object.prototype.hasOwnProperty.call(e,'line_user_id')?(e.line_user_id||'ยังไม่ผูก LINE'):'ยังไม่เชื่อมข้อมูล LINE User ID'],['สำนักงาน',data.office?.name||e.default_office_id||e.office_id||'ไม่ระบุ'],['วันหยุดประจำสัปดาห์',dayoff],['แผนก',e.department],['ตำแหน่ง',e.position],['โทรศัพท์',e.phone],['อีเมล',e.email]].map(([label,value])=>`<div class="profile-field"><dt>${label}</dt><dd>${esc(value??'ไม่ระบุ')}</dd></div>`).join('');
+ return [['รหัสพนักงาน',e.employee_code],['ชื่อ',e.name],['สถานะ',e.active===true?'ใช้งานอยู่':e.active===false?'ปิดใช้งาน':'ไม่ระบุ'],['รูปแบบลงเวลา',userLabel(e.attendance_mode)],['LINE User ID',Object.prototype.hasOwnProperty.call(e,'line_user_id')?(e.line_user_id||'ยังไม่ผูก LINE'):'ยังไม่เชื่อมข้อมูล LINE User ID'],['สำนักงาน',data.office?.name||e.default_office_id||e.office_id||'ไม่ระบุ'],['วันหยุดประจำสัปดาห์',dayoff],['แผนก',e.department],['ตำแหน่ง',e.position]].map(([label,value])=>`<div class="profile-field"><dt>${label}</dt><dd>${esc(value??'ไม่ระบุ')}</dd></div>`).join('');
 }
 async function showProfile(id){
  const staged=(state.peopleRows||[]).find(e=>e.id===id);
@@ -402,16 +402,12 @@ async function showProfile(id){
 }
 
 async function showSelfProfile(){
- try{const d=await api('staging_self_profile');state.selfProfileVersion=d.version;
+ try{const d=await api('staging_self_profile');
  $('#actionTitle').textContent='ข้อมูลส่วนตัวของฉัน';
  const e=d.employee;
- $('#actionBody').innerHTML=`<dl class="employee-profile">${profileFields({employee:e})}</dl><form id="selfContactForm" class="request-form"><label>โทรศัพท์<input type="tel" name="phone" maxlength="30" autocomplete="tel" value="${esc(e.phone||'')}"></label><label>อีเมล<input type="email" name="email" maxlength="254" autocomplete="email" value="${esc(e.email||'')}"></label><p class="panel-sub">แก้ไขได้เฉพาะโทรศัพท์และอีเมล · บันทึกในชุดทดลอง</p><button type="submit" class="btn primary">บันทึก</button></form>`;
+ $('#actionBody').innerHTML=`<dl class="employee-profile">${profileFields({employee:e})}</dl>`;
  $('#actionDialog').showModal();
  }catch(e){toast(peopleError(e))}
-}
-async function saveSelfContact(form){
- const button=form.querySelector('button[type="submit"]'),fd=new FormData(form);button.disabled=true;
- try{await api('staging_self_profile_save',{phone:fd.get('phone'),email:fd.get('email'),version:state.selfProfileVersion});$('#actionDialog').close();toast('บันทึกข้อมูลติดต่อในชุดทดลองแล้ว')}catch(e){toast(peopleError(e))}finally{button.disabled=false}
 }
 async function showEmployee(id){
  const e=state.directory?.employees.find(e=>e.id===id);const version=renderVersion;
@@ -450,7 +446,6 @@ document.addEventListener('click',e=>{
 document.addEventListener('input',e=>{if(e.target.id==='employeeSearch'){state.employeeSearch=e.target.value;$('#employeeResults').innerHTML=employeeRows(filteredPeople())}});
 document.addEventListener('change',e=>{if(e.target.id==='employeeScope'){state.employeeScope=e.target.value;$('#employeeResults').innerHTML=employeeRows(filteredPeople())}if(e.target.closest?.('#overtimeForm')&&['mode','date'].includes(e.target.name))loadOvertimeBalance($('#overtimeForm [data-ot-balance]'));if(e.target.id==='reportScope'){state.reportScope=e.target.value;state.reportEmployee='';state.directory=null;render()}if(e.target.id==='reportEmployee'){state.reportEmployee=e.target.value;render()}if(e.target.id==='workDate'&&e.target.value){state.date=e.target.value;state.selected=state.date;state.month=state.date.slice(0,7);render()}if(e.target.id==='month'&&e.target.value){state.month=e.target.value;state.selected=state.month+'-01';if(state.page==='schedule')state.date=state.selected;render()}if(e.target.id==='reportType'){state.reportType=e.target.value;render()}if(e.target.id==='leaveDuration')$('#halfDayRule').hidden=e.target.value==='FULL_DAY'});
 document.addEventListener('submit',e=>{
- if(e.target.id==='selfContactForm'){e.preventDefault();saveSelfContact(e.target);return}
  if(e.target.id==='signupForm'){e.preventDefault();submitSignup(e.target);return}
  if(e.target.id==='personnelForm'){e.preventDefault();savePersonnel(e.target);return}
  if(!['leaveForm','correctionForm','overtimeForm'].includes(e.target.id))return;e.preventDefault();
