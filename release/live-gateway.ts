@@ -1,4 +1,4 @@
-// Production candidate, deliberately not deployed. No arbitrary proxy action.
+// Production gateway. No arbitrary proxy action; unconnected features fail closed.
 // HR access never creates a public.admins row.
 type Dependencies = {
  verifyLine:(token:string)=>Promise<{userId:string,displayName?:string,pictureUrl?:string}>;
