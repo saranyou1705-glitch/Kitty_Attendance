@@ -25,7 +25,9 @@ test('OT minutes export in a separate numeric column without overwriting legacy 
  for(const combined of [false,true]){
   const data={...sample,combined,employeeCount:1,rows:[{...sample.rows[0],employee:sample.employee,ot_used_hours:35/60}]};
   const wb=report.build(data,ExcelJS),bytes=await wb.xlsx.writeBuffer(),loaded=new ExcelJS.Workbook();await loaded.xlsx.load(bytes);const s=loaded.worksheets[0],ot=combined?'N':'L',legacy=combined?'L':'J';
-  assert.equal(s.getCell(ot+'7').value,'ใช้ชดแล้ว (OT ทดลอง)');assert.equal(s.getCell(ot+'8').value,35/1440);assert.equal(s.getCell(legacy+'8').value,0);
+  const serial=v=>v instanceof Date?v.getTime()/86400000+25569:v;
+  assert.equal(wb.worksheets[0].getCell(ot+'8').value,35/1440);
+  assert.equal(s.getCell(ot+'7').value,'ใช้ชดแล้ว (OT ทดลอง)');assert(Math.abs(serial(s.getCell(ot+'8').value)-35/1440)<1e-9);assert.equal(serial(s.getCell(legacy+'8').value),0);
   assert.equal(s.getCell(ot+'9').formula,'SUM('+ot+'8:'+ot+'8)');assert.equal(s.getCell(ot+'8').numFmt,'[h]" ชม. "mm" นาที"');
  }
 });
