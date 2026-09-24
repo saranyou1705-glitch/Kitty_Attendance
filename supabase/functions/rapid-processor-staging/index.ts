@@ -1119,6 +1119,12 @@ Deno.serve(async (req) => {
       });
     }
 
+    async function weeklyDays(employeeId:string){
+      const {data,error}=await supabase.from("employee_weekly_dayoffs").select("iso_dow").eq("employee_id",employeeId).eq("active",true).order("iso_dow");
+      if(error)throw error;
+      const days=["MON","TUE","WED","THU","FRI","SAT","SUN"];
+      return [...new Set((data||[]).filter((r:any)=>Number.isInteger(r.iso_dow)&&r.iso_dow>=1&&r.iso_dow<=7).map((r:any)=>days[r.iso_dow-1]))];
+    }
     const profile = await verifyLine(req);
     if(Object.prototype.hasOwnProperty.call(STAGING_PERSONNEL_ACTIONS,action)){
       const {data,error}=await supabase.rpc("kitty_staging_personnel_v1",{actor:profile.userId,operation:STAGING_PERSONNEL_ACTIONS[action],payload:body});
@@ -1126,6 +1132,7 @@ Deno.serve(async (req) => {
         const message=known.includes(error.message)?error.message:error.code==="23505"?"DUPLICATE_CODE":"PERSONNEL_SERVICE_ERROR";
         return json({ok:false,error:message},message==="FORBIDDEN"?403:message==="PERSONNEL_SERVICE_ERROR"?503:400);
       }
+      if(action==="staging_people_get" && data?.profile?.employee_id && !data.profile.id){data.profile.weekly_dayoffs=await weeklyDays(data.profile.employee_id)}
       return json(data);
     }
 
@@ -1278,7 +1285,8 @@ Deno.serve(async (req) => {
       for (const key of ["id","employee_code","name","attendance_mode","active","line_user_id","default_office_id","office_id","weekly_dayoff","weekly_dayoffs","weekly_days_off","weekly_off_days","day_off","phone","email","position","department"]) {
         if (Object.prototype.hasOwnProperty.call(record,key)) profile[key]=record[key];
       }
-      const officeId=record.default_office_id || record.office_id;
+      profile.weekly_dayoffs=await weeklyDays(id);
+      const officeId=record.assigned_office_id || record.default_office_id || record.office_id;
       let office=null;
       if (officeId) {
         const result=await supabase.from("offices").select("id,office_code,name").eq("id",officeId).maybeSingle();

@@ -47,7 +47,7 @@ test('preview flag cannot elevate HR or employee access',async()=>{assert.equal(
 test('LINE preview does not attempt any DB writes',async()=>{const r=await request('admin_report_preview','ADMIN',{date:'2026-09-10',reportType:'END_DAY'});assert.equal(r.writes,0);assert.equal(r.status,200)});
 test('dashboard includes real scheduled employees without daily attendance rows',async()=>{const r=await request('admin_daily','HR',{date:'2026-09-10'},true);assert.equal(r.status,200);assert.equal(r.data.summary.not_checked_in,1);assert.equal(r.data.summary.checked_in,1);assert.equal(r.data.rows.find(e=>e.employee_id==='ho').first_in_at,null);assert.equal(r.writes,0)});
 test('employee profile is scoped and returns only approved personnel fields',async()=>{
- const extras={tables:{employees:[{id:'ho',employee_code:'HO002',name:'N',attendance_mode:'STANDARD',line_user_id:'line-id',weekly_dayoffs:['MON'],secret:'never-return'}]}};
+ const extras={tables:{employees:[{id:'ho',employee_code:'HO002',name:'N',attendance_mode:'STANDARD',line_user_id:'line-id',weekly_dayoffs:['FRI'],secret:'never-return'}],employee_weekly_dayoffs:[{employee_id:'ho',iso_dow:1,active:true}]}};
  const r=await request('admin_employee_profile','HR',{employeeId:'ho'},false,extras);
  assert.equal(r.status,200);assert.equal(r.data.employee.line_user_id,'line-id');assert.deepEqual(r.data.employee.weekly_dayoffs,['MON']);assert.equal(r.data.employee.secret,undefined);assert.equal(r.writes,0);
  assert.equal((await request('admin_employee_profile','HR',{employeeId:'ba'})).status,403);
@@ -111,4 +111,14 @@ test('personnel route always uses verified LINE actor and fixed RPC operation',a
 test('personnel RPC permission failures remain forbidden',async()=>{
  const result=await request('staging_people_save','HR',{employeeId:'ba'},false,{rpc:async()=>({data:null,error:{message:'FORBIDDEN'}})});
  assert.equal(result.status,403);assert.equal(result.data.error,'FORBIDDEN');
+});
+
+test('personnel editor reads original ISO weekdays only after authorized RPC and preserves sandbox overrides',async()=>{
+ const tables={employee_weekly_dayoffs:[{employee_id:'ho',iso_dow:6,active:true},{employee_id:'ho',iso_dow:7,active:true},{employee_id:'ba',iso_dow:1,active:true}]};
+ const r=await request('staging_people_get','HR',{employeeId:'ho'},false,{tables,rpc:()=>({data:{ok:true,profile:{employee_id:'ho',version:0,weekly_dayoffs:[]}}})});
+ assert.deepEqual(r.data.profile.weekly_dayoffs,['SAT','SUN']);assert.equal(r.writes,0);
+ const override=await request('staging_people_get','HR',{employeeId:'ho'},false,{tables,rpc:()=>({data:{ok:true,profile:{id:'shadow',employee_id:'ho',weekly_dayoffs:[]}}})});
+ assert.deepEqual(override.data.profile.weekly_dayoffs,[]);
+ const failure=await request('staging_people_get','HR',{employeeId:'ho'},false,{errors:{employee_weekly_dayoffs:{message:'unavailable'}},rpc:()=>({data:{ok:true,profile:{employee_id:'ho'}}})});
+ assert.notEqual(failure.status,200);
 });

@@ -266,3 +266,17 @@ test('new signup asks only name and existing submission shows waiting status',as
  const html=await run('signupView()');assert(html.includes('name="name"'));assert(!html.includes('name="employee_code"'));assert(!html.includes('name="role"'));
  registered=true;assert((await run('signupView()')).includes('ส่งชื่อให้ HR แล้ว'));
 });
+
+test('employee status defaults active and composes with search without changing directory scope',()=>{
+ const {run,node,listeners}=setup();run("state.peopleRows=[{id:'a',name:'Alice',active:true},{id:'b',name:'Bob',active:false},{id:'c',name:'Ann',active:false}]");
+ assert.equal(run("filteredPeople().map(e=>e.id).join(',')"),'a');
+ listeners.change({target:{id:'employeeScope',value:'inactive'}});
+ assert(node('#employeeResults').innerHTML.includes('Bob'));assert(!node('#employeeResults').innerHTML.includes('Alice'));
+ listeners.input({target:{id:'employeeSearch',value:'ann'}});
+ assert(node('#employeeResults').innerHTML.includes('Ann'));assert(!node('#employeeResults').innerHTML.includes('Bob'));
+ run("state.employeeScope='all';state.employeeSearch='a'");assert.equal(run("filteredPeople().map(e=>e.id).join(',')"),'a,c');
+});
+test('explicit empty weekly days are explained rather than blank',()=>{
+ const {run}=setup();assert(run("profileFields({employee:{weekly_dayoffs:[]}})").includes('ไม่ได้กำหนดวันหยุดประจำสัปดาห์'));
+ const css=fs.readFileSync(__dirname+'/design-system.css','utf8');assert(css.includes('flex:0 0 20px'));assert(css.includes('grid-template-columns:repeat(auto-fit,minmax(120px,1fr))'));
+});

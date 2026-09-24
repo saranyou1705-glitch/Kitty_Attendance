@@ -138,6 +138,8 @@ button,input,select,textarea{letter-spacing:normal;line-height:1.5}h1,h2,h3,.bra
 .request-item>.btn[data-request-key]{position:relative;display:flex;align-items:center;justify-content:center;width:176px;max-width:100%;min-height:44px;margin:12px 0 0;padding:10px 26px}
 .request-item>.btn[data-request-key] .request-read-label{display:block;margin:0;padding:0;line-height:1.5;text-align:center}
 .request-item>.btn.request-unread[data-request-key]::before{position:absolute;left:12px;top:50%;transform:translateY(-50%);margin:0}
-.weekly-dayoffs{display:flex;flex-wrap:wrap;gap:8px 16px;border:1px solid var(--line);border-radius:14px;padding:16px;margin:0 0 16px}
-.request-form .weekly-dayoffs label{display:flex;align-items:center;gap:8px;margin:0;min-height:44px}
-.request-form .weekly-dayoffs input{width:20px;height:20px;min-height:20px;padding:0;accent-color:var(--pink-ink)}
+.weekly-dayoffs{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;min-width:0;border:1px solid var(--line);border-radius:14px;padding:16px;margin:0 0 16px}
+.request-form .weekly-dayoffs label{display:flex;flex-direction:row;align-items:center;justify-content:flex-start;gap:10px;margin:0;padding:8px;min-width:0;min-height:44px;line-height:1.5}.weekly-dayoffs label span{white-space:nowrap}
+.request-form .weekly-dayoffs input[type=checkbox]{appearance:auto;display:block;flex:0 0 20px;width:20px;max-width:20px;height:20px;min-height:20px;margin:0;padding:0;accent-color:var(--pink-ink)}
+
+.employee-filters{display:grid;grid-template-columns:minmax(0,2fr) minmax(120px,1fr);gap:16px;align-items:end}.employee-filters .field{min-width:0}.employee-filters input,.employee-filters select{width:100%;min-height:44px;box-sizing:border-box}
