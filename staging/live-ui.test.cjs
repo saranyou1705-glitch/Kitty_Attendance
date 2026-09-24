@@ -3,6 +3,10 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const vm=require('node:vm');
 const source=fs.readFileSync(__dirname+'/app.js','utf8').replace('navigation();init();','');
+test('login, loading and connection errors do not label Production as Staging',()=>{
+ const login=source.slice(source.indexOf('async function init(){'),source.indexOf('function dayPicker()'));
+ assert(!/STAGING|เว็บ Staging/.test(login));assert(login.includes('กำลังเชื่อมต่อ'));assert(login.includes('ยังไม่เชื่อมต่อข้อมูล'));
+});
 test('request history explains correction event/time and pink approved status without mislabeling trial data',()=>{
  const {run}=setup();run('CONFIG.requestsLive=true');
  const html=run("myRequestHistory([{kind:'correction',status:'APPROVED',sandbox:false,requested_event_type:'BREAK_OUT',requested_event_at:'2026-09-24T05:30:00Z',reason:'<script>bad</script>'}])");
