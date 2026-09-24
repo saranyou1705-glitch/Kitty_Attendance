@@ -95,7 +95,7 @@ test('HR has six direct tabs with separate request types and no management tab',
 test('employee info uses distinct profile action and escapes LINE and dayoff data',()=>{
  const {run}=setup();assert(run("employeeRows([{id:'ho'}])").includes('data-profile="ho"'));assert(!run("employeeRows([{id:'ho'}])").includes('data-employee='));
  const html=run("profileFields({employee:{line_user_id:'<line>',weekly_dayoffs:['MON','TUE']}})");
- assert(html.includes('&lt;line&gt;'));assert(html.includes('MON, TUE'));assert(!html.includes('การลงเวลา'));
+ assert(html.includes('&lt;line&gt;'));assert(html.includes('จันทร์, อังคาร'));assert(!html.includes('การลงเวลา'));
  assert(run('dayPicker()').includes('<span>วันที่</span>'));
 });
 test('request card distinguishes unavailable source from empty queue and escapes reasons',()=>{
@@ -236,4 +236,14 @@ test('monthly sandbox OT is scoped separately and includes current-day approval'
  const ids=[];const {run}=setup(async(url,options)=>{ids.push(JSON.parse(options.body).employeeId);return {ok:true,json:async()=>({ok:true,rows:[{id:'a',kind:'overtime',status:'APPROVED',settlement_state:'READY',minutes:35}]})}});
  run("state.role='hr';state.month='2026-09';state.directory={employees:[{id:'ho',employee_code:'HO002',name:'Office',active:true},{id:'shane',name:'Shane',active:true},{id:'old',name:'Former',active:false}]}");
  const html=await run('monthlyOtView()');assert.deepEqual(ids,['ho']);assert(html.includes('0 ชม. 35 นาที'));assert(html.includes('รวมวันนี้'));assert(!html.includes('Shane'));
+});
+test('leave detail and history render Thai labels without internal codes',()=>{
+ const {run,node}=setup();run("state.role='hr';state.boot={profile:{userId:'hr'}};requestCache.set(requestScope(),{rows:[{id:'leave',kind:'leave',leave_type:'SICK_LEAVE',duration:'FULL_DAY',status:'PENDING'}]});openRequest('leave:leave')");
+ const html=node('#actionBody').innerHTML;assert(html.includes('ลาป่วย · เต็มวัน'));assert(!html.includes('FULL_DAY'));assert(!html.includes('SICK_LEAVE'));
+ const history=run("myRequestHistory([{kind:'leave',leave_type:'BUSINESS_LEAVE',duration:'HALF_DAY_PM',status:'APPROVED'}])");assert(history.includes('ลากิจ · ครึ่งวันบ่าย'));
+});
+test('employee modes and branch events use readable labels without changing form values',()=>{
+ const {run}=setup();const html=run("employeeRows([{id:'ba',name:'Example',attendance_mode:'MULTI_BRANCH',active:true}])");assert(html.includes('ทำงานหลายสาขา'));assert(!html.includes('MULTI_BRANCH'));
+ assert(run("eventsTable([{event_type:'BRANCH_IN'}])").includes('เข้าสาขา'));assert(run("leaveView()").includes('value="FULL_DAY"'));
+ assert.equal(run("scheduleLabel('SICK_LEAVE')"),'ลาป่วย');assert.equal(run("userLabel('UNRECOGNIZED_CODE')"),'ไม่ระบุ');
 });

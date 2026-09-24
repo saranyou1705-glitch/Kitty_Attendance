@@ -31,3 +31,4 @@ test('OT minutes export in a separate numeric column without overwriting legacy 
   assert.equal(s.getCell(ot+'9').formula,'SUM('+ot+'8:'+ot+'8)');assert.equal(s.getCell(ot+'8').numFmt,'[h]" ชม. "mm" นาที"');
  }
 });
+test('leave export notes translate type and duration without exposing codes',()=>{const text=report.notes({requests:[{kind:'leave',leave_type:'SICK_LEAVE',duration:'FULL_DAY',status:'APPROVED',effective_date:'2026-09-24'}]});assert(text.includes('ลาป่วย'));assert(text.includes('เต็มวัน'));assert(!text.includes('SICK_LEAVE'));assert(!text.includes('FULL_DAY'));assert(!text.includes('APPROVED'))});

@@ -1,7 +1,7 @@
 /* Browser report export. No data leaves the browser while generating the XLSX. */
 (function(root){
  'use strict';
- const status={PENDING:'รออนุมัติ',APPROVED:'อนุมัติ',REJECTED:'ปฏิเสธ',CANCELLED:'ยกเลิก',WORK:'ทำงาน',WFH:'WFH',OFF:'หยุด',LEAVE:'ลา',SICK_LEAVE:'ลาป่วย',BUSINESS_LEAVE:'ลากิจ',VACATION:'ลาพักร้อน',UNPAID_LEAVE:'ลาไม่รับค่าจ้าง',FUTURE:'ยังไม่ถึงวัน',NO_SCHEDULE:'ไม่พบตาราง'};
+ const status={PENDING:'รออนุมัติ',APPROVED:'อนุมัติ',REJECTED:'ปฏิเสธ',CANCELLED:'ยกเลิก',WORK:'ทำงาน',WFH:'ทำงานจากบ้าน',OFF:'หยุด',LEAVE:'ลา',SICK_LEAVE:'ลาป่วย',BUSINESS_LEAVE:'ลากิจ',VACATION:'ลาพักร้อน',UNPAID_LEAVE:'ลาไม่รับค่าจ้าง',FUTURE:'ยังไม่ถึงวัน',NO_SCHEDULE:'ไม่พบตาราง'};
  const events={IN:'เข้างาน',OUT:'ออกงาน',BREAK_OUT:'ออกพัก',BREAK_IN:'กลับจากพัก',CHECK_IN:'เข้างาน',CHECK_OUT:'ออกงาน'};
  const duration={FULL_DAY:'เต็มวัน',HALF_DAY_AM:'ครึ่งวันเช้า',HALF_DAY_PM:'ครึ่งวันบ่าย'};
  const day=value=>value?new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Bangkok',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(value)):'';
@@ -9,9 +9,9 @@
  function notes(row){
   const lines=row.schedule_note?[`หมายเหตุตาราง: ${row.schedule_note}`]:[];
   for(const r of row.requests||[]){
-   const kind=r.kind==='overtime'?`ใช้โอที · ${r.mode==='USE_PRIOR'?'ใช้ชั่วโมงเกิน':'ชดชั่วโมงขาด'} ${r.settlement_state&&r.settlement_state!=='READY'?'รอตรวจสอบเวลา':r.minutes==null?'รอตรวจเวลาครบทั้งสองวัน':`${Math.floor(Number(r.minutes)/60)} ชม. ${Number(r.minutes)%60} นาที`} · ${r.source_date} → ${r.target_date}`:r.kind==='leave'?`ขอลา ${duration[r.duration]||r.duration||''}`:`ขอแก้เวลา ${events[r.requested_event_type]||r.requested_event_type||''} ${clock(r.requested_event_at)}`;
+   const kind=r.kind==='overtime'?`ใช้โอที · ${r.mode==='USE_PRIOR'?'ใช้ชั่วโมงเกิน':'ชดชั่วโมงขาด'} ${r.settlement_state&&r.settlement_state!=='READY'?'รอตรวจสอบเวลา':r.minutes==null?'รอตรวจเวลาครบทั้งสองวัน':`${Math.floor(Number(r.minutes)/60)} ชม. ${Number(r.minutes)%60} นาที`} · ${r.source_date} → ${r.target_date}`:r.kind==='leave'?`ขอลา ${status[r.leave_type||r.type]||(['ลาป่วย','ลากิจ','ลาพักร้อน','ลาไม่รับค่าจ้าง'].includes(r.leave_type||r.type)?r.leave_type||r.type:'')} · ${duration[r.duration]||'ไม่ระบุช่วงเวลา'}`:`ขอแก้เวลา ${events[r.requested_event_type]||'ไม่ระบุรายการ'} ${clock(r.requested_event_at)}`;
    const submitted=r.created_at?`${day(r.created_at)} ${clock(r.created_at)}`:'ไม่ระบุ';
-   let text=`${r.sandbox?'[ทดลอง] ':''}${kind} · ${status[r.status]||r.status} · สำหรับวันที่ ${r.effective_date} · ส่ง ${submitted}`;
+   let text=`${r.sandbox?'[ทดลอง] ':''}${kind} · ${status[r.status]||'ไม่ระบุสถานะ'} · สำหรับวันที่ ${r.effective_date} · ส่ง ${submitted}`;
    if(r.kind==='correction'&&r.status==='APPROVED'){
     if(r.approved_sequence_in_month!=null)text+=` · ครั้งที่ ${r.approved_sequence_in_month}`;
     if(Number(r.deduction_amount)>0)text+=` · ยอดต้องหัก ${Number(r.deduction_amount)} บาท`;
@@ -42,7 +42,7 @@
   sheet.getRow(7).eachCell(cell=>{cell.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FF223452'}};cell.font={name:'Arial',size:11,bold:true,color:{argb:'FFFFFFFF'}};cell.alignment={horizontal:'center',vertical:'middle'}});
   data.rows.forEach((r,i)=>{
    const n=i+8;const text=notes(r);const row=sheet.getRow(n);
-   row.values=[...(data.combined?[r.employee.employee_code,r.employee.name]:[]),new Date(r.work_date+'T00:00:00Z'),status[r.schedule_status]||r.schedule_status||'',...['first_in_at','break_out_at','break_in_at','last_out_at'].map(k=>excelTime(r[k])),...['paid_work_hours','short_hours','over_hours','makeup_hours'].map(k=>excelDuration(r[k])),text||null,excelDuration(r.ot_used_hours)];
+   row.values=[...(data.combined?[r.employee.employee_code,r.employee.name]:[]),new Date(r.work_date+'T00:00:00Z'),status[r.schedule_status]||'ไม่ระบุสถานะ',...['first_in_at','break_out_at','break_in_at','last_out_at'].map(k=>excelTime(r[k])),...['paid_work_hours','short_hours','over_hours','makeup_hours'].map(k=>excelDuration(r[k])),text||null,excelDuration(r.ot_used_hours)];
    row.eachCell({includeEmpty:true},cell=>{cell.font={name:'Arial',size:11,color:{argb:'FF1E293B'}};cell.alignment={vertical:'top',horizontal:typeof cell.value==='number'?'right':'left'};if(i%2===1)cell.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FFF3F6FA'}}});
    row.getCell(12+shift).numFmt='[h]" ชม. "mm" นาที"';
    row.getCell(1+shift).numFmt='dd/mm/yyyy';
