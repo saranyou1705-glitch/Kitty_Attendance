@@ -521,6 +521,22 @@ function officeLateIssues(list:any[]) {
     .join("\n");
 }
 
+// Read-only union: schedules define expected attendance even before the first clock event.
+async function loadScheduledAttendance(supabase:any,date:string) {
+  const [daily,schedules]=await Promise.all([
+    supabase.from("daily_attendance").select("*,employee:employees(id,employee_code,name,attendance_mode,assigned_office:offices(name)),office:offices(name)").eq("work_date",date),
+    supabase.from("employee_schedules").select("employee_id,work_date,schedule_status,required_hours,employee:employees(id,employee_code,name,attendance_mode,assigned_office:offices(name)),office:offices(name)").eq("work_date",date),
+  ]);
+  if(daily.error||schedules.error)throw daily.error||schedules.error;
+  const merged=new Map((daily.data||[]).map((r:any)=>[r.employee_id||r.employee?.id,r]));
+  for(const s of schedules.data||[]){
+    const r:any=merged.get(s.employee_id);
+    merged.set(s.employee_id,r?{...r,schedule_status:s.schedule_status??r.schedule_status,required_hours:s.required_hours??r.required_hours,employee:r.employee||s.employee,office:s.office||r.office}:
+      {...s,first_in_at:null,last_out_at:null,break_out_at:null,break_in_at:null,paid_work_hours:null,net_hours:null});
+  }
+  return {data:[...merged.values()],error:null};
+}
+
 async function loadOriginalReportData(
   supabase:any,
   date:string,
@@ -529,32 +545,7 @@ async function loadOriginalReportData(
     { data:dailyRows, error:dailyError },
     { data:eventRows, error:eventError },
   ] = await Promise.all([
-    supabase
-      .from("daily_attendance")
-      .select(`
-        work_date,
-        schedule_status,
-        work_status,
-        attendance_status,
-        first_in_at,
-        break_out_at,
-        break_in_at,
-        last_out_at,
-        paid_work_hours,
-        short_hours,
-        over_hours,
-        makeup_hours,
-        late_minutes,
-        employee:employees(
-          id,
-          employee_code,
-          name,
-          attendance_mode,
-          assigned_office:offices(name)
-        ),
-        office:offices(name)
-      `)
-      .eq("work_date", date),
+    loadScheduledAttendance(supabase,date),
 
     supabase
       .from("attendance_events")
@@ -1930,33 +1921,14 @@ Deno.serve(async (req) => {
       if (!admin) return json({ ok:false,error:"ADMIN_REQUIRED" }, 403);
       const date = String(body.date || bangkokDate());
 
-      const { data: allRows, error } = await supabase
-        .from("daily_attendance")
-        .select(`*,employee:employees(id,employee_code,name,attendance_mode)`)
-        .eq("work_date", date)
-        .order("employee_id");
-      if (error) throw error;
-
-      const {data: schedules, error: scheduleError} = await supabase
-        .from("employee_schedules")
-        .select("employee_id,work_date,schedule_status,required_hours,employee:employees(id,employee_code,name,attendance_mode)")
-        .eq("work_date",date);
-      if (scheduleError) throw scheduleError;
-      // A scheduled employee may have no daily_attendance row before clock-in.
-      // Keep their actual schedule visible without inventing attendance events.
-      const merged = new Map((allRows || []).map(r => [r.employee_id,r]));
-      for (const schedule of schedules || []) {
-        if (!merged.has(schedule.employee_id)) merged.set(schedule.employee_id,{
-          ...schedule,first_in_at:null,last_out_at:null,paid_work_hours:null,net_hours:null,
-        });
-      }
-      const visibleRows = [...merged.values()];
+      const {data:visibleRows}=await loadScheduledAttendance(supabase,date);
       const rows = isHR ? visibleRows.filter(r => hrIds.has(r.employee_id)) : visibleRows;
 
       const summary = {
         checked_in: 0,
         checked_out: 0,
         not_checked_in: 0,
+        on_break: 0,
         off: 0,
         leave: 0,
       };
@@ -1964,6 +1936,7 @@ Deno.serve(async (req) => {
       for (const r of rows || []) {
         if (r.first_in_at) summary.checked_in += 1;
         if (r.last_out_at) summary.checked_out += 1;
+        if (r.first_in_at && !r.last_out_at && r.break_out_at && (!r.break_in_at || Date.parse(r.break_out_at)>Date.parse(r.break_in_at))) summary.on_break += 1;
 
         if (r.schedule_status === "OFF") {
           summary.off += 1;
@@ -1975,7 +1948,7 @@ Deno.serve(async (req) => {
           continue;
         }
 
-        if (r.schedule_status === "WORK" && !r.first_in_at) {
+        if (["WORK","WFH"].includes(r.schedule_status) && !r.first_in_at) {
           summary.not_checked_in += 1;
         }
       }

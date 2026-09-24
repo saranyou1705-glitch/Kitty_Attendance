@@ -76,3 +76,31 @@ test('OT actions route only to isolated OT RPC and retain HR scope',async()=>{
  assert.equal((await request('staging_ot_review',null)).status,403);
  const invalid=await request('staging_ot_submit','HR',{},false,{rpc:async()=>({error:{message:'OT_INSUFFICIENT_MINUTES'}})});assert.equal(invalid.status,400);assert.equal(invalid.data.error,'OT_INSUFFICIENT_MINUTES');
 });
+test('LINE midday and end-day include scheduled employees with no daily record',async()=>{
+ for(const [reportType,label] of [['MIDDAY','ยังไม่เข้างาน'],['END_DAY','ไม่มาทำงาน']]){
+  const r=await request('admin_report_preview','ADMIN',{date:'2026-09-10',reportType},true);
+  assert.equal(r.status,200);assert(r.data.message.includes(label+' (1 คน)'));assert(r.data.message.includes('Office Employee'));assert.equal(r.writes,0);
+ }
+});
+test('authoritative schedules override stale daily status without duplicating people',async()=>{
+ const employee={id:'ho',employee_code:'HO002',name:'Office',attendance_mode:'STANDARD'};
+ const extras={tables:{daily_attendance:[{employee_id:'ho',employee,work_date:'2026-09-10',schedule_status:'OFF',first_in_at:null}],employee_schedules:[{employee_id:'ho',employee,work_date:'2026-09-10',schedule_status:'WORK'}]}};
+ const r=await request('admin_daily','ADMIN',{date:'2026-09-10'},false,extras);
+ assert.equal(r.data.rows.length,1);assert.equal(r.data.summary.not_checked_in,1);assert.equal(r.data.summary.off,0);
+ const line=await request('admin_report_preview','ADMIN',{date:'2026-09-10',reportType:'MIDDAY'},false,extras);assert(line.data.message.includes('ยังไม่เข้างาน (1 คน)'));
+});
+test('off and current-break counts exclude returned and checked-out employees',async()=>{
+ const day='2026-09-10',employee={id:'ho',employee_code:'HO002',name:'Office',attendance_mode:'STANDARD'};
+ const row=(id,extra)=>({employee_id:id,employee:{...employee,id},work_date:day,schedule_status:'WORK',first_in_at:day+'T02:00:00Z',...extra});
+ const extras={tables:{employee_schedules:[],daily_attendance:[
+  row('a',{break_out_at:day+'T05:00:00Z'}),
+  row('b',{break_out_at:day+'T05:00:00Z',break_in_at:day+'T06:00:00Z'}),
+  row('c',{break_out_at:day+'T07:00:00Z',break_in_at:day+'T06:00:00Z'}),
+  row('d',{break_out_at:day+'T05:00:00Z',last_out_at:day+'T10:00:00Z'}),
+  row('off',{first_in_at:null,schedule_status:'OFF'}),
+  row('leave',{first_in_at:null,schedule_status:'SICK_LEAVE'}),
+  row('wfh',{first_in_at:null,schedule_status:'WFH'})
+ ]}};
+ const r=await request('admin_daily','ADMIN',{date:day},false,extras);
+ assert.equal(r.data.summary.on_break,2);assert.equal(r.data.summary.off,1);assert.equal(r.data.summary.leave,1);assert.equal(r.data.summary.not_checked_in,1);assert.equal(r.writes,0);
+});

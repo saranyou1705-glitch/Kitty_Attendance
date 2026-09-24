@@ -178,3 +178,8 @@ test('actual BA clock renders branch flow with own events and no fabricated data
  run("state.boot={employee:{id:'self',attendance_mode:'MULTI_BRANCH'}}");
  const html=await run('clockView()');assert(html.includes('Actual Branch'));assert(html.includes('จบวันทำงาน'));assert(html.includes('อยู่ที่สาขา'));assert.deepEqual(calls,['today']);
 });
+test('overview has six cards including off and current break without hiding zeros',async()=>{
+ const {run}=setup(async()=>({ok:true,json:async()=>({ok:true,summary:{checked_in:8,not_checked_in:0,leave:1,checked_out:2,off:3,on_break:4},rows:[]})}));
+ run("state.role='admin'");
+ const html=await run('dashboardView()');assert.equal((html.match(/class="stat-card"/g)||[]).length,6);assert(html.includes('วันหยุด</span><strong>3'));assert(html.includes('กำลังพัก</span><strong>4'));assert(html.includes('ยังไม่เข้างาน</span><strong>0'));
+});
