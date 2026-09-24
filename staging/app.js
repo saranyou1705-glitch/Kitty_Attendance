@@ -133,12 +133,30 @@ async function calendarView(){
  const rows=month.rows||[],daily=day.daily;
  return `<div class="schedule-toolbar"><p>${esc(person(state.boot.employee))}</p><button class="btn secondary" data-today>วันนี้</button></div><div class="personal-calendar-layout">${panel(calendarGrid(rows))}${panel(`<h2>${displayDate(state.selected)}</h2><p>${esc(scheduleLabel(day.schedule?.schedule_status||daily?.schedule_status))}</p>${[['เข้างาน',time(daily?.first_in_at)],['ออกพัก',time(daily?.break_out_at)],['กลับจากพัก',time(daily?.break_in_at)],['ออกงาน',time(daily?.last_out_at)],['ทำงานสุทธิ',hours(daily?.paid_work_hours)],['ชั่วโมงที่กำหนด',hours(day.schedule?.required_hours??daily?.required_hours)]].map(([label,value])=>`<div class="time-line"><span>${label}</span><strong>${value}</strong></div>`).join('')}`)}</div>`;
 }
+
+function otSummary(rows){
+ const seen=new Set();let minutes=0,waiting=0;
+ for(const r of rows||[]){if(r.kind!=='overtime'||r.status!=='APPROVED')continue;if(r.id&&seen.has(r.id))continue;if(r.id)seen.add(r.id);
+ if(r.settlement_state==='READY'&&r.minutes!=null&&Number.isFinite(Number(r.minutes))&&Number(r.minutes)>=0)minutes+=Number(r.minutes);else waiting++;
+ }
+ return {minutes,waiting,hours:waiting?null:minutes/60};
+}
+function otSummaryLabel(s){return hours(s.minutes/60)+(s.waiting?` · ยังรอตรวจเวลา ${s.waiting} คำขอ`:'')}
+async function monthlyOtView(){
+ const month=state.month,role=state.role,d=await directory(),employees=reportEmployees(d.employees||[],role);
+ const rows=[];
+ for(let i=0;i<employees.length;i+=3){
+  rows.push(...await Promise.all(employees.slice(i,i+3).map(async e=>{const result=await api('staging_ot_report',{employeeId:e.id,month});return [person(e),otSummaryLabel(otSummary(result.rows||[]))]})));
+ }
+ return panel(`<h2>ใช้ชดแล้ว · OT ทดลอง</h2><p>คำขอที่อนุมัติสำหรับเดือน ${esc(month)} รวมวันนี้เมื่อเวลาครบทั้งสองวัน</p>${table(['พนักงาน','ใช้ชดแล้ว'],rows)}<p class="panel-sub">แสดงแยกจากยอดระบบเดิม ไม่บวกซ้ำหรือปรับเงินเดือน</p>`);
+}
+
 async function reportView(){
  const daily=state.reportPeriod!=='monthly';
  const tabs=`<div class="tabs report-tabs"><button class="tab ${daily&&state.reportPeriod!=='individual'?'active':''}" data-report-period="daily">รายงานรายวัน</button><button class="tab ${!daily?'active':''}" data-report-period="monthly">Monthly Summary</button><button class="tab ${state.reportPeriod==='individual'?'active':''}" data-report-period="individual">รายบุคคล / Excel</button></div>`;
  if(state.reportPeriod==='individual')return tabs+await individualReportView();
  if(daily){const d=await api('admin_daily',{date:state.date});return `${tabs}<div class="reports-head"><h2>รายงานรายวัน</h2>${dayPicker()}</div>${panel(`<div class="print-heading"><h2>Kitty Attendance · รายงานรายวัน</h2><p>${displayDate(state.date)} · ${state.role==='hr'?'Head Office':'ทุกกลุ่มพนักงาน'}</p></div>${table(['พนักงาน','สถานะ','เข้างาน','ออกพัก','กลับจากพัก','ออกงาน','ทำงาน','ขาด','เกิน'],d.rows.map(r=>[person(r.employee),r.schedule_status||r.work_status||'—',time(r.first_in_at),time(r.break_out_at),time(r.break_in_at),time(r.last_out_at),hours(r.paid_work_hours),hours(r.short_hours),hours(r.over_hours)]))}<button class="btn primary" data-action="print">พิมพ์ / บันทึก PDF</button><button class="btn secondary" data-action="retry">โหลดรายงานใหม่</button>`)}`}
- const d=await api('admin_monthly_summary',{month:state.month});return `${tabs}<div class="reports-head"><h2>Monthly Summary</h2><label class="field">เดือน<input type="month" id="month" value="${state.month}"></label></div>${panel(`<div class="print-heading"><h2>Kitty Attendance · Monthly Summary</h2><p>${esc(state.month)} · ${state.role==='hr'?'Head Office ยกเว้น Shane และ Peet':'ทุกกลุ่มพนักงาน'}</p></div><p>เริ่ม ${esc(d.period_start)}${d.period_end_inclusive?' ถึง '+esc(d.period_end_inclusive):''}</p>${table(['พนักงาน','วันทำงาน','ชั่วโมงทำงาน','ชั่วโมงขาด','ชั่วโมงเกิน','เวลาชด','ชั่วโมงสุทธิ'],d.rows.map(r=>[person(r),r.work_days,hours(r.paid_work_hours),hours(r.short_hours),hours(r.over_hours),hours(r.makeup_hours),hours(r.net_hours)]))}<p class="panel-sub">ยอดจากระบบเดิม ยังไม่รวมกฎเวลาชดและค่าขอแก้เวลาเวอร์ชันทดลอง</p><button class="btn primary" data-action="print">พิมพ์ / บันทึก PDF</button>`)}`;
+ const d=await api('admin_monthly_summary',{month:state.month});const ot=await monthlyOtView();return `${tabs}<div class="reports-head"><h2>Monthly Summary</h2><label class="field">เดือน<input type="month" id="month" value="${state.month}"></label></div>${panel(`<div class="print-heading"><h2>Kitty Attendance · Monthly Summary</h2><p>${esc(state.month)} · ${state.role==='hr'?'Head Office ยกเว้น Shane และ Peet':'ทุกกลุ่มพนักงาน'}</p></div><p>เริ่ม ${esc(d.period_start)}${d.period_end_inclusive?' ถึง '+esc(d.period_end_inclusive):''}</p>${table(['พนักงาน','วันทำงาน','ชั่วโมงทำงาน','ชั่วโมงขาด','ชั่วโมงเกิน','เวลาชดระบบเดิม','ชั่วโมงสุทธิ'],d.rows.map(r=>[person(r),r.work_days,hours(r.paid_work_hours),hours(r.short_hours),hours(r.over_hours),hours(r.makeup_hours),hours(r.net_hours)]))}<p class="panel-sub">ยอดระบบเดิมตามช่วงวันที่ข้างต้น · ดูยอด OT ที่อนุมัติแล้วในตารางแยกด้านล่าง</p><button class="btn primary" data-action="print">พิมพ์ / บันทึก PDF</button>`)}${ot}`;
 }
 function reportEmployees(employees,role,scope='active'){
  return employees.filter(e=>(scope==='all'||e.active===true)&&(role!=='hr'||!(/\b(shane|peet)\b/i.test(e.name||''))));
@@ -166,12 +184,12 @@ async function individualReportView(){
  const report=id==='ALL'?{combined:true,employee:{id:'ALL',employee_code:'ALL',name:'พนักงานทั้งหมด'},rows:reports.flatMap(r=>r.rows.map(row=>({...row,employee:r.employee}))),warnings:[...new Set(reports.flatMap(r=>r.warnings||[]))],month,generated_at:reports[0].generated_at,employeeCount:reports.length}:reports[0];
  state.individualReport={...report,role,scope};
  const helper=window.KittyIndividualReport,previewRows=report.rows.slice(0,100);
- return controls+panel(`<div class="reports-head"><h2>${id==='ALL'?`พนักงานทั้งหมด ${reports.length} คน`:esc(person(report.employee))}</h2><button class="btn primary" data-action="individual-excel">ดาวน์โหลด Excel</button></div>${report.warnings.map(w=>`<p class="report-warning">${esc(w)}</p>`).join('')}<p class="panel-sub">รวม ${report.rows.length} แถว · Excel มีข้อมูลครบในชีทเดียว${report.rows.length>100?' · ตัวอย่างด้านล่าง 100 แถวแรก':''}</p>${table([...(id==='ALL'?['พนักงาน']:[]),'วันที่','สถานะ','เข้างาน','ออกพัก','กลับจากพัก','ออกงาน','ทำงานสุทธิ','หมายเหตุ / คำขอ'],previewRows.map(r=>[...(id==='ALL'?[person(r.employee)]:[]),r.work_date,helper.status[r.schedule_status]||r.schedule_status,time(r.first_in_at),time(r.break_out_at),time(r.break_in_at),time(r.last_out_at),hours(r.paid_work_hours),helper.notes(r)]))}`);
+ return controls+panel(`<div class="reports-head"><h2>${id==='ALL'?`พนักงานทั้งหมด ${reports.length} คน`:esc(person(report.employee))}</h2><button class="btn primary" data-action="individual-excel">ดาวน์โหลด Excel</button></div>${report.warnings.map(w=>`<p class="report-warning">${esc(w)}</p>`).join('')}<p class="panel-sub">รวม ${report.rows.length} แถว · Excel มีข้อมูลครบในชีทเดียว${report.rows.length>100?' · ตัวอย่างด้านล่าง 100 แถวแรก':''}</p>${table([...(id==='ALL'?['พนักงาน']:[]),'วันที่','สถานะ','เข้างาน','ออกพัก','กลับจากพัก','ออกงาน','ทำงานสุทธิ','ใช้ชดแล้ว (OT ทดลอง)','หมายเหตุ / คำขอ'],previewRows.map(r=>[...(id==='ALL'?[person(r.employee)]:[]),r.work_date,helper.status[r.schedule_status]||r.schedule_status,time(r.first_in_at),time(r.break_out_at),time(r.break_in_at),time(r.last_out_at),hours(r.paid_work_hours),r.ot_waiting?'รอตรวจเวลา':hours(r.ot_used_hours),helper.notes(r)]))}`);
 }
 
 function mergeSandboxReport(report,requests){
  const records=(requests.rows||[]).filter(r=>['leave','correction','overtime'].includes(r.kind)).map(r=>({...r,sandbox:true,effective_date:r.work_date}));
- return {...report,rows:report.rows.map(row=>({...row,requests:[...(row.requests||[]),...records.filter(r=>r.work_date===row.work_date||(r.created_at&&dateKey(new Date(r.created_at))===row.work_date))]})),warnings:[...(report.warnings||[]),'คำขอทดลองแสดงเป็นหมายเหตุเท่านั้น ยังไม่ปรับยอดเวลาหรือเงินเดือนของระบบเดิม']};
+ return {...report,rows:report.rows.map(row=>({...row,ot_used_hours:otSummary(records.filter(r=>r.work_date===row.work_date)).hours,ot_waiting:otSummary(records.filter(r=>r.work_date===row.work_date)).waiting,requests:[...(row.requests||[]),...records.filter(r=>r.work_date===row.work_date||(r.created_at&&dateKey(new Date(r.created_at))===row.work_date))]})),warnings:[...(report.warnings||[]),'ยอดใช้ชดแล้ว (OT ทดลอง) นับเฉพาะอนุมัติและเวลาครบ แยกจากเวลาชดระบบเดิม ไม่ปรับเงินเดือน']};
 }
 
 async function downloadIndividualReport(button){
@@ -211,8 +229,8 @@ function unreadRequests(kind){if(state.personal||!['hr','admin'].includes(state.
 function requestBadge(page){const kind=page==='leave'?'leave':page==='clock-approvals'?'correction':null;return kind&&unreadRequests(kind).length?'<span class="unread-dot" role="img" aria-label="มีคำขอยังไม่ได้อ่าน"></span>':''}
 function requestCategory(r){return r.kind==='overtime'?'correction':r.kind}
 function combineQueues(a,b){return {rows:[...(a.rows||[]),...(b.rows||[])].sort((x,y)=>String(y.created_at).localeCompare(String(x.created_at))),warnings:[...(a.warnings||[]),...(b.warnings||[])]}}
-function overtimeState(r){return r.settlement_state==='READY'?`ชดได้ ${hours(Number(r.minutes)/60)} · ยังขาด ${hours(Number(r.remaining_short_minutes||0)/60)}`:r.settlement_state==='SCHEDULE_CHANGED'?'ตารางงานเปลี่ยน กรุณาให้ HR ตรวจสอบ':r.settlement_state==='INACTIVE'?'ไม่ได้ใช้ชั่วโมง':'รอตรวจเวลาครบทั้งสองวัน'}
-function overtimeDetails(r){return `<div class="ot-total"><span>ชั่วโมงที่ใช้ได้</span><strong>${r.settlement_state==='READY'?hours(Number(r.available_minutes??r.minutes)/60):'ยังสรุปไม่ได้'}</strong>${r.settlement_state!=='READY'?`<small>${esc(overtimeState(r))}</small>`:''}</div>`+table(['วันทำงาน','เวลาสุทธิ','เวลาที่กำหนด'],[[r.source_date||'—',hours(r.source_paid_minutes==null?null:r.source_paid_minutes/60),hours(r.source_required_minutes==null?null:r.source_required_minutes/60)],[r.target_date||'—',hours(r.target_paid_minutes==null?null:r.target_paid_minutes/60),hours(r.target_required_minutes==null?null:r.target_required_minutes/60)]])+ `<p role="status">${esc(overtimeState(r))}</p>`}
+function overtimeState(r){return r.settlement_state==='READY'?`${r.status==='APPROVED'?'ใช้ชดแล้ว':'ชดได้'} ${hours(Number(r.minutes)/60)} · ยังขาด ${hours(Number(r.remaining_short_minutes||0)/60)}`:r.settlement_state==='SCHEDULE_CHANGED'?'ตารางงานเปลี่ยน กรุณาให้ HR ตรวจสอบ':r.settlement_state==='INACTIVE'?'ไม่ได้ใช้ชั่วโมง':'รอตรวจเวลาครบทั้งสองวัน'}
+function overtimeDetails(r,label=r.status==='APPROVED'?'ใช้ชดแล้ว':'ชั่วโมงที่ใช้ได้'){return `<div class="ot-total"><span>${esc(label)}</span><strong>${r.settlement_state==='READY'?hours(Number(r.available_minutes??r.minutes)/60):'ยังสรุปไม่ได้'}</strong>${r.settlement_state!=='READY'?`<small>${esc(overtimeState(r))}</small>`:''}</div>`+table(['วันทำงาน','เวลาสุทธิ','เวลาที่กำหนด'],[[r.source_date||'—',hours(r.source_paid_minutes==null?null:r.source_paid_minutes/60),hours(r.source_required_minutes==null?null:r.source_required_minutes/60)],[r.target_date||'—',hours(r.target_paid_minutes==null?null:r.target_paid_minutes/60),hours(r.target_required_minutes==null?null:r.target_required_minutes/60)]])+ `<p role="status">${esc(overtimeState(r))}</p>`}
 function overtimeDescription(r){return `${r.mode==='USE_PRIOR'?'ใช้ชั่วโมงเกิน':'ชดชั่วโมงขาด'} ${esc(overtimeState(r))} · ${esc(r.source_date||'—')} → ${esc(r.target_date||'—')}`}
 async function requestQueue(){
  const scope=requestScope(),version=(queueVersions.get(scope)||0)+1;queueVersions.set(scope,version);
@@ -262,7 +280,7 @@ function overtimeView(){return panel(`<h2>ใช้โอที</h2><form id="ov
 async function loadOvertimeBalance(button){
  const form=$('#overtimeForm'),mode=form.elements.mode.value,date=form.elements.date.value,version=renderVersion;
  if(!date||!button)return;button.disabled=true;$('#otBalance').textContent='กำลังตรวจชั่วโมงที่ใช้ได้…';
- try{const data=await api('staging_ot_balance',{mode,date});if(version===renderVersion&&form.elements.mode.value===mode&&form.elements.date.value===date)$('#otBalance').innerHTML=overtimeDetails(data)}
+ try{const [data,mine]=await Promise.all([api('staging_ot_balance',{mode,date}),api('staging_ot_mine')]);const used=otSummary((mine.rows||[]).filter(r=>r.mode===mode&&r.work_date===date));if(version===renderVersion&&form.elements.mode.value===mode&&form.elements.date.value===date)$('#otBalance').innerHTML=`<div class="ot-total"><span>ใช้ชดแล้ว · คำขอที่อนุมัติ</span><strong>${esc(otSummaryLabel(used))}</strong></div>`+overtimeDetails(data,'ใช้เพิ่มได้สำหรับคำขอใหม่')}
  catch(error){if(version===renderVersion&&form.elements.mode.value===mode&&form.elements.date.value===date)$('#otBalance').textContent=workflowError(error)}finally{button.disabled=false}
 }
 

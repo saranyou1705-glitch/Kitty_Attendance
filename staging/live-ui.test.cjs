@@ -74,7 +74,7 @@ test('older request cannot replace a newer page',async()=>{
  run("state.connected=true;state.role='admin';state.page='dashboard'");const first=run('render()');run("state.page='settings'");await run('render()');releases.forEach(release=>release());await first;assert(node('#content').innerHTML.includes('ตั้งค่าระบบ'));assert(!node('#content').innerHTML.includes('เข้างานแล้ว'));
 });
 test('daily report loads selected date and HR scope with break columns and print action',async()=>{const calls=[];const {run}=setup(async(url,options)=>{calls.push({action:new URL(url).searchParams.get('action'),body:JSON.parse(options.body)});return {ok:true,json:async()=>({ok:true,rows:[{employee:{name:'Actual employee'},paid_work_hours:8.5,break_out_at:'2026-09-20T05:00:00Z'}]})}});run("state.role='hr';state.date='2026-09-20'");const html=await run('reportView()');assert.equal(calls[0].action,'admin_daily');assert.equal(calls[0].body.date,'2026-09-20');assert.equal(calls[0].body.previewRole,'HR');assert(html.includes('8 ชม. 30 นาที'));assert(html.includes('ออกพัก'));assert(html.includes('data-action=\"print\"'));assert(!html.includes('data-page=\"dashboard\"'))});
-test('monthly report stays available as a separate tab',async()=>{let action;const {run}=setup(async(url)=>{action=new URL(url).searchParams.get('action');return {ok:true,json:async()=>({ok:true,rows:[],period_start:'2026-09-01'})}});run("state.reportPeriod='monthly'");const html=await run('reportView()');assert.equal(action,'admin_monthly_summary');assert(html.includes('data-report-period=\"daily\"'))});
+test('monthly report stays available as a separate tab',async()=>{const actions=[];const {run}=setup(async(url)=>{actions.push(new URL(url).searchParams.get('action'));return {ok:true,json:async()=>({ok:true,rows:[],period_start:'2026-09-01'})}});run("state.reportPeriod='monthly'");const html=await run('reportView()');assert(actions.includes('admin_monthly_summary'));assert(html.includes('ใช้ชดแล้ว · OT ทดลอง'));assert(html.includes('data-report-period=\"daily\"'))});
 test('calendar shows real entry time, off days, missing data and accessible selection',()=>{
  const {run}=setup();run("state.month='2026-09';state.selected='2026-09-02'");
  const html=run("calendarGrid([{work_date:'2026-09-01',first_in_at:'2026-09-01T02:15:00Z'},{work_date:'2026-09-02',schedule_status:'OFF'}])");
@@ -219,4 +219,21 @@ test('personal background refresh updates history without replacing typed form',
  run("state.connected=true;state.role='employee';state.page='clock-request';state.boot={employee:{id:'self'}}");
  node('#content').innerHTML='typed form stays';node('#personalRequestHistory').innerHTML='old request';
  await run('refreshRequestNotifications()');assert.equal(node('#content').innerHTML,'typed form stays');assert(!node('#personalRequestHistory').innerHTML.includes('old request'));
+});
+test('OT report counts approved ready minutes only and preserves legacy totals',()=>{
+ const {run}=setup();
+ const result=run("mergeSandboxReport({rows:[{work_date:'2026-09-24',makeup_hours:0,paid_work_hours:8.4167}],warnings:[]},{rows:[{id:'a',kind:'overtime',status:'APPROVED',settlement_state:'READY',minutes:35,work_date:'2026-09-24'},{id:'a',kind:'overtime',status:'APPROVED',settlement_state:'READY',minutes:35,work_date:'2026-09-24'},{id:'p',kind:'overtime',status:'PENDING',settlement_state:'READY',minutes:90,work_date:'2026-09-24'}]})");
+ assert.equal(result.rows[0].ot_used_hours,35/60);assert.equal(result.rows[0].makeup_hours,0);assert.equal(result.rows[0].paid_work_hours,8.4167);
+ assert.equal(run("otSummary([{kind:'overtime',status:'APPROVED',settlement_state:'WAITING',minutes:null}]).hours"),null);
+});
+test('OT form distinguishes 35 minutes used from zero available for a new request',async()=>{
+ const {run,node}=setup(async(url)=>({ok:true,json:async()=>new URL(url).searchParams.get('action')==='staging_ot_balance'?{ok:true,settlement_state:'READY',minutes:0,available_minutes:0}:{ok:true,rows:[{id:'a',kind:'overtime',status:'APPROVED',settlement_state:'READY',mode:'USE_PRIOR',work_date:'2026-09-24',minutes:35}]}}));
+ node('#overtimeForm').elements={mode:{value:'USE_PRIOR'},date:{value:'2026-09-24'}};
+ await run("loadOvertimeBalance({disabled:false})");
+ const html=node('#otBalance').innerHTML;assert(html.includes('ใช้ชดแล้ว · คำขอที่อนุมัติ'));assert(html.includes('0 ชม. 35 นาที'));assert(html.includes('ใช้เพิ่มได้สำหรับคำขอใหม่'));assert(html.includes('0 ชม. 0 นาที'));
+});
+test('monthly sandbox OT is scoped separately and includes current-day approval',async()=>{
+ const ids=[];const {run}=setup(async(url,options)=>{ids.push(JSON.parse(options.body).employeeId);return {ok:true,json:async()=>({ok:true,rows:[{id:'a',kind:'overtime',status:'APPROVED',settlement_state:'READY',minutes:35}]})}});
+ run("state.role='hr';state.month='2026-09';state.directory={employees:[{id:'ho',employee_code:'HO002',name:'Office',active:true},{id:'shane',name:'Shane',active:true},{id:'old',name:'Former',active:false}]}");
+ const html=await run('monthlyOtView()');assert.deepEqual(ids,['ho']);assert(html.includes('0 ชม. 35 นาที'));assert(html.includes('รวมวันนี้'));assert(!html.includes('Shane'));
 });

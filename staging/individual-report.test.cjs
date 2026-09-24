@@ -21,3 +21,11 @@ test('browser export round-trips valid XLSX with typed dates, duration formats, 
  assert.equal(sheet.getCell('G10').formula,'SUM(G8:G9)');assert(Math.abs(serial(sheet.getCell('G10').result)-8/24)<1e-9);
  assert.equal(typeof sheet.getCell('K8').value,'string');assert.match(sheet.getCell('K8').value,/=1\+1/);assert.equal(sheet.getCell('K8').font.color.argb,'FFB91C1C');assert.match(sheet.getCell('K5').value,/ยังไม่เชื่อม/);assert.equal(sheet.views[0].ySplit,7);
 });
+test('OT minutes export in a separate numeric column without overwriting legacy makeup',async()=>{
+ for(const combined of [false,true]){
+  const data={...sample,combined,employeeCount:1,rows:[{...sample.rows[0],employee:sample.employee,ot_used_hours:35/60}]};
+  const wb=report.build(data,ExcelJS),bytes=await wb.xlsx.writeBuffer(),loaded=new ExcelJS.Workbook();await loaded.xlsx.load(bytes);const s=loaded.worksheets[0],ot=combined?'N':'L',legacy=combined?'L':'J';
+  assert.equal(s.getCell(ot+'7').value,'ใช้ชดแล้ว (OT ทดลอง)');assert.equal(s.getCell(ot+'8').value,35/1440);assert.equal(s.getCell(legacy+'8').value,0);
+  assert.equal(s.getCell(ot+'9').formula,'SUM('+ot+'8:'+ot+'8)');assert.equal(s.getCell(ot+'8').numFmt,'[h]" ชม. "mm" นาที"');
+ }
+});
