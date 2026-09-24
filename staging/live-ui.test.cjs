@@ -3,6 +3,14 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const vm=require('node:vm');
 const source=fs.readFileSync(__dirname+'/app.js','utf8').replace('navigation();init();','');
+test('older OT response cannot overwrite a newer refresh',async()=>{
+ const pending=[];const {run,node}=setup(()=>new Promise(resolve=>pending.push(resolve)));
+ node('#overtimeForm').elements={mode:{value:'USE_PRIOR'},date:{value:'2026-09-24'}};
+ const first=run('loadOvertimeBalance({disabled:false})'),second=run('loadOvertimeBalance({disabled:false})');
+ pending[1]({ok:true,json:async()=>({ok:true,settlement_state:'READY',available_minutes:90})});await second;
+ pending[0]({ok:true,json:async()=>({ok:true,settlement_state:'READY',available_minutes:10})});await first;
+ assert(node('#otBalance').innerHTML.includes('1 ชม. 30 นาที'));assert(!node('#otBalance').innerHTML.includes('0 ชม. 10 นาที'));
+});
 test('real request notes retain real status in individual export',()=>{
  const {run}=setup();const result=run("mergeSandboxReport({rows:[{work_date:'2026-09-24'}]}, {rows:[{kind:'leave',work_date:'2026-09-24',sandbox:false},{kind:'overtime',work_date:'2026-09-24',sandbox:true}]} )");
  assert.equal(result.rows[0].requests[0].sandbox,false);assert.equal(result.rows[0].requests[1].sandbox,true);
@@ -244,11 +252,11 @@ test('OT report counts approved ready minutes only and preserves legacy totals',
  assert.equal(result.rows[0].ot_used_hours,35/60);assert.equal(result.rows[0].makeup_hours,0);assert.equal(result.rows[0].paid_work_hours,8.4167);
  assert.equal(run("otSummary([{kind:'overtime',status:'APPROVED',settlement_state:'WAITING',minutes:null}]).hours"),null);
 });
-test('OT form shows one approved total instead of a redundant new-request balance',async()=>{
+test('OT form uses fresh balance instead of displaying a previous approved request',async()=>{
  const {run,node}=setup(async(url)=>({ok:true,json:async()=>new URL(url).searchParams.get('action')==='staging_ot_balance'?{ok:true,settlement_state:'READY',minutes:0,available_minutes:0}:{ok:true,rows:[{id:'a',kind:'overtime',status:'APPROVED',settlement_state:'READY',mode:'USE_PRIOR',work_date:'2026-09-24',minutes:35}]}}));
  node('#overtimeForm').elements={mode:{value:'USE_PRIOR'},date:{value:'2026-09-24'}};
  await run("loadOvertimeBalance({disabled:false})");
- const html=node('#otBalance').innerHTML;assert(html.includes('ใช้ชดแล้ว'));assert(html.includes('0 ชม. 35 นาที'));assert(!html.includes('ใช้เพิ่มได้สำหรับคำขอใหม่'));assert.equal((html.match(/class="ot-total"/g)||[]).length,1);
+ const html=node('#otBalance').innerHTML;assert(!html.includes('ใช้ชดแล้ว'));assert(!html.includes('0 ชม. 35 นาที'));assert(html.includes('ไม่มีชั่วโมงที่ใช้ได้'));assert.equal((html.match(/class="ot-total"/g)||[]).length,0);
 });
 test('monthly sandbox OT is scoped separately and includes current-day approval',async()=>{
  const ids=[];const {run}=setup(async(url,options)=>{ids.push(JSON.parse(options.body).employeeId);return {ok:true,json:async()=>({ok:true,rows:[{id:'a',kind:'overtime',status:'APPROVED',settlement_state:'READY',minutes:35}]})}});
