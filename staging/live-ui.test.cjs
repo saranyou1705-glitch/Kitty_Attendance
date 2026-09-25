@@ -3,6 +3,11 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const vm=require('node:vm');
 const source=fs.readFileSync(__dirname+'/app.js','utf8').replace('navigation();init();','');
+test('Production export requires live history and never merges trial history',async()=>{
+ let live=true;const calls=[];const {run}=setup(async(url,options)=>{calls.push(JSON.parse(options.body));return {ok:true,json:async()=>({ok:true,requestHistory:live?'live':'legacy',otLive:live,rows:[],warnings:[]})}});
+ run('CONFIG.requestsLive=true');await run("loadIndividualReport('ho','2026-09')");assert.equal(calls.length,1);assert.equal(calls[0].requestSource,'live');
+ live=false;await assert.rejects(run("loadIndividualReport('ho','2026-09')"),/ยังไม่เชื่อมคำขอจริง/);
+});
 test('prior-day summaries show excess or shortage, not target-day projection',()=>{
  const {run}=setup();
  const p="{source_date:'2026-09-24',source_required_minutes:540}";

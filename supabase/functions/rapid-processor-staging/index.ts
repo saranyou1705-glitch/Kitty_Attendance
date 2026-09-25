@@ -1366,7 +1366,8 @@ Deno.serve(async (req) => {
         }
         return [...found.values()];
       }
-      const [leave,corrections] = await Promise.all([
+      const liveHistory = body.requestSource === 'live';
+      const [leave,corrections] = liveHistory ? [[],[]] : await Promise.all([
         requestRows("leave_requests_v2","leave_date","id,leave_date,duration,status,reason,created_at","คำขอลา"),
         requestRows("attendance_correction_requests","work_date","id,work_date,requested_event_type,requested_event_at,reason,status,created_at,approved_sequence_in_month,deduction_amount","คำขอแก้เวลา"),
       ]);
@@ -1374,6 +1375,19 @@ Deno.serve(async (req) => {
         ...leave.map(r=>({...r,kind:"leave",effective_date:r.leave_date})),
         ...corrections.map(r=>({...r,kind:"correction",effective_date:r.work_date})),
       ].sort((a,b)=>String(a.created_at).localeCompare(String(b.created_at)));
+      if(liveHistory){
+        const payload={employeeId,month,...(isHR?{previewRole:'HR'}:{})};
+        const results=await Promise.all([
+          supabase.rpc('kitty_live_request_v1',{actor:profile.userId,operation:'report',payload}),
+          supabase.rpc('kitty_live_overtime_v1',{actor:profile.userId,operation:'report',payload}),
+        ]);
+        for(const result of results){
+          if(result.error)throw result.error;
+          if(!result.data?.ok||!Array.isArray(result.data.rows))throw Error('LIVE_HISTORY_UNAVAILABLE');
+          if(result.data.rows.length>=1000)throw Error('LIVE_HISTORY_LIMIT');
+          requests.push(...result.data.rows.map((r:any)=>({...r,sandbox:false,effective_date:r.kind==='overtime'?(r.mode==='USE_PRIOR'?r.target_date:r.source_date):r.work_date})));
+        }
+      }
       const byDaily = new Map<string,any>((daily.data || []).map(r=>[r.work_date,r]));
       const bySchedule = new Map<string,any>((schedules.data || []).map(r=>[r.work_date,r]));
       const rows = [];
@@ -1383,7 +1397,12 @@ Deno.serve(async (req) => {
         rows.push({work_date:date,schedule_status:schedule?.schedule_status || (date>bangkokDate()?"FUTURE":"NO_SCHEDULE"),...byDaily.get(date),schedule_note:schedule?.notes || null,
           requests:requests.filter(r=>r.effective_date===date || (r.created_at && new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Bangkok",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date(r.created_at))===date))});
       }
-      return json({ok:true,employee:person,month,rows,warnings,generated_at:new Date().toISOString()});
+      if(liveHistory)for(const row of rows){
+        const approved=requests.filter((r:any)=>r.kind==='overtime'&&r.status==='APPROVED'&&r.effective_date===row.work_date);
+        row.ot_waiting=approved.filter((r:any)=>r.settlement_state!=='READY').length;
+        row.ot_used_hours=row.ot_waiting?null:approved.reduce((total:number,r:any)=>total+Number(r.minutes||0),0)/60;
+      }
+      return json({ok:true,employee:person,month,rows,warnings,otLive:liveHistory,requestHistory:liveHistory?'live':'legacy',generated_at:new Date().toISOString()});
     }
 
     if (action === "staging_schedule") {

@@ -1,4 +1,16 @@
 const {test}=require('node:test');
+test('live report connects verified request RPCs instead of missing legacy tables',async()=>{
+ const calls=[];
+ const extras={errors:{leave_requests_v2:{code:'42P01'},attendance_correction_requests:{code:'42P01'}},rpc:async(name,args)=>{calls.push([name,args]);return {data:{ok:true,rows:name==='kitty_live_request_v1'?[{id:'leave',kind:'leave',work_date:'2026-09-10',status:'APPROVED',reason:'Actual leave'}]:[{id:'ot',kind:'overtime',mode:'USE_PRIOR',source_date:'2026-09-09',target_date:'2026-09-10',status:'APPROVED',settlement_state:'READY',minutes:45}]},error:null}}};
+ const r=await request('admin_individual_report','HR',{employeeId:'ho',month:'2026-09',requestSource:'live'},false,extras);
+ assert.equal(r.status,200);assert.equal(r.data.requestHistory,'live');assert.deepEqual(r.data.warnings,[]);
+ const day=r.data.rows.find(r=>r.work_date==='2026-09-10');assert.equal(day.requests.length,2);assert.equal(day.ot_used_hours,.75);assert(day.requests.every(r=>r.sandbox===false));
+ assert(calls.every(c=>c[1].actor==='user'&&c[1].operation==='report'&&c[1].payload.previewRole==='HR'));assert.equal(r.writes,0);
+});
+test('live report fails closed when request history cannot load',async()=>{
+ const r=await request('admin_individual_report','HR',{employeeId:'ho',month:'2026-09',requestSource:'live'},false,{rpc:async()=>({error:{message:'history unavailable'}})});
+ assert.notEqual(r.status,200);
+});
 test('new LINE-linked HR grants only scoped reads without legacy admin membership',async()=>{
  const extras={rpc:async(name,args)=>{assert.equal(name,'kitty_live_access_v1');assert.equal(args.actor,'user');assert.equal(args.operation,'identity');return {data:{ok:true,role:'HR',registration:{id:'new-hr'}},error:null}}};
  const d=await request('admin_bootstrap',null,{},false,extras);assert.equal(d.status,200);assert.deepEqual(d.data.employees.map(e=>e.id),['ho','shane']);
