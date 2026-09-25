@@ -274,7 +274,7 @@ async function individualReportView(){
  const selected=id==='ALL'?employees:employees.filter(e=>e.id===id);
  for(let i=0;i<selected.length;i+=3){
   if(version!==renderVersion)return '';
-  const batch=await Promise.all(selected.slice(i,i+3).map(async e=>mergeSandboxReport(await api('admin_individual_report',{employeeId:e.id,month}),combineQueues(await api('staging_request_report',{employeeId:e.id,month}),await trialApi('staging_ot_report',{employeeId:e.id,month})))));
+  const batch=await Promise.all(selected.slice(i,i+3).map(e=>loadIndividualReport(e.id,month)));
   if(batch.some((r,j)=>r.employee?.id!==selected[i+j].id||r.month!==month))throw Error('ข้อมูลรายงานไม่ตรงกับที่เลือก กรุณาโหลดใหม่');
   if(scope==='active'&&batch.some(r=>r.employee.active!==true)){state.directory=null;throw Error('สถานะพนักงานเปลี่ยนระหว่างโหลด กรุณาโหลดรายชื่อใหม่')}
   reports.push(...batch);
@@ -287,6 +287,14 @@ async function individualReportView(){
  return controls+panel(`<div class="reports-head"><h2>${id==='ALL'?`พนักงานทั้งหมด ${reports.length} คน`:esc(person(report.employee))}</h2><button class="btn primary" data-action="individual-excel">ดาวน์โหลด Excel</button></div>${report.warnings.map(w=>`<p class="report-warning">${esc(w)}</p>`).join('')}<p class="panel-sub">รวม ${report.rows.length} แถว · Excel มีข้อมูลครบในชีทเดียว${report.rows.length>100?' · ตัวอย่างด้านล่าง 100 แถวแรก':''}</p>${table([...(id==='ALL'?['พนักงาน']:[]),'วันที่','สถานะ','เข้างาน','ออกพัก','กลับจากพัก','ออกงาน','ทำงานสุทธิ',CONFIG.requestsLive?'ใช้ชดแล้ว (OT)':'ใช้ชดแล้ว (OT ทดลอง)','หมายเหตุ / คำขอ'],previewRows.map(r=>[...(id==='ALL'?[person(r.employee)]:[]),r.work_date,scheduleLabel(r.schedule_status),time(r.first_in_at),time(r.break_out_at),time(r.break_in_at),time(r.last_out_at),hours(r.paid_work_hours),r.ot_waiting?'รอตรวจเวลา':hours(r.ot_used_hours),helper.notes(r)]))}`);
 }
 
+async function loadIndividualReport(employeeId,month){
+ if(CONFIG.requestsLive){
+  const report=await api('admin_individual_report',{employeeId,month,requestSource:'live'});
+  if(report.requestHistory!=='live'||report.otLive!==true)throw Error('รายงานยังไม่เชื่อมคำขอจริง กรุณาโหลดใหม่');
+  return report;
+ }
+ return mergeSandboxReport(await api('admin_individual_report',{employeeId,month}),combineQueues(await api('staging_request_report',{employeeId,month}),await trialApi('staging_ot_report',{employeeId,month})));
+}
 function mergeSandboxReport(report,requests){
  const records=(requests.rows||[]).filter(r=>['leave','correction','overtime'].includes(r.kind)).map(r=>({...r,sandbox:r.sandbox!==false,effective_date:r.work_date}));
  return {...report,otLive:CONFIG.requestsLive,rows:report.rows.map(row=>({...row,ot_used_hours:otSummary(records.filter(r=>(r.kind==='overtime'?((r.mode==='USE_PRIOR'?r.target_date:r.source_date)||r.work_date):r.work_date)===row.work_date)).hours,ot_waiting:otSummary(records.filter(r=>(r.kind==='overtime'?((r.mode==='USE_PRIOR'?r.target_date:r.source_date)||r.work_date):r.work_date)===row.work_date)).waiting,requests:[...(row.requests||[]),...records.filter(r=>(r.kind==='overtime'?((r.mode==='USE_PRIOR'?r.target_date:r.source_date)||r.work_date):r.work_date)===row.work_date||(r.created_at&&dateKey(new Date(r.created_at))===row.work_date))]})),warnings:[...(report.warnings||[]),...(requests.warnings||[]),CONFIG.requestsLive?'ยอดขาด/เกินรวม OT ที่อนุมัติและเวลาครบแล้ว ไม่ต้องหักหรือบวก OT ซ้ำ':'ยอดใช้ชดแล้ว (OT ทดลอง) นับเฉพาะอนุมัติและเวลาครบ แยกจากเวลาชดระบบเดิม ไม่ปรับเงินเดือน']};
