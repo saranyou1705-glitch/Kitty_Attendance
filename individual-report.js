@@ -37,7 +37,7 @@
   sheet.getCell(`${noteCol}5`).value=(data.warnings||[]).join('\n')||'หมายเหตุคำขอแสดงทั้งวันที่ส่งและวันที่เกี่ยวข้อง ไม่นับซ้ำเป็นคำขอใหม่';
   sheet.getCell(`${noteCol}5`).alignment={wrapText:true,vertical:'top'};sheet.getRow(5).height=46;
   if(data.warnings?.length)sheet.getCell(`${noteCol}5`).font={name:'Arial',size:11,color:{argb:'FF9C6500'}};
-  const headers=[...(data.combined?['รหัสพนักงาน','ชื่อพนักงาน']:[]),'วันที่','สถานะตาราง','เข้างาน','ออกพัก','กลับจากพัก','ออกงาน','ทำงานสุทธิ','ขาด','เกิน','เวลาชดระบบเดิม','หมายเหตุ / คำขอ','ใช้ชดแล้ว (OT ทดลอง)'];
+  const headers=[...(data.combined?['รหัสพนักงาน','ชื่อพนักงาน']:[]),'วันที่','สถานะตาราง','เข้างาน','ออกพัก','กลับจากพัก','ออกงาน','ทำงานสุทธิ','ขาด','เกิน','เวลาชดระบบเดิม','หมายเหตุ / คำขอ',data.otLive?'ใช้ชดแล้ว (OT)':'ใช้ชดแล้ว (OT ทดลอง)'];
   sheet.getRow(7).values=headers;sheet.getRow(7).height=28;
   sheet.getRow(7).eachCell(cell=>{cell.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FF223452'}};cell.font={name:'Arial',size:11,bold:true,color:{argb:'FFFFFFFF'}};cell.alignment={horizontal:'center',vertical:'middle'}});
   data.rows.forEach((r,i)=>{
