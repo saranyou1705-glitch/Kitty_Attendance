@@ -1,7 +1,6 @@
 
-// Supabase Edge Function: rapid-processor-staging
-// Production data stays read-only. Explicit request RPC actions write only kitty_staging.
-// Never deploy this file over rapid-processor.
+// Supabase Edge Function: attendance-api
+// Deploy with: supabase functions deploy attendance-api --no-verify-jwt
 // Required secrets:
 // SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
 // LINE access token is supplied per request and verified with LINE.
@@ -13,36 +12,7 @@ const cors = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-line-access-token",
   "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
-  "X-Kitty-Environment": "staging",
 };
-
-// These actions call a single RPC whose only write targets are kitty_staging.
-const STAGING_REQUEST_ACTIONS:Record<string,string> = {
-  staging_request_submit:"submit", staging_request_review:"review",
-  staging_request_cancel:"cancel", staging_request_mine:"mine",
-  staging_request_queue:"queue", staging_request_report:"report",
-  staging_ot_submit:"submit",staging_ot_balance:"balance",staging_ot_review:"review",
-  staging_ot_cancel:"cancel",staging_ot_mine:"mine",staging_ot_queue:"queue",staging_ot_report:"report",
-};
-const STAGING_PERSONNEL_ACTIONS:Record<string,string>={staging_self_profile:"get",staging_self_profile_save:"save",staging_people_register:"register",staging_people_mine:"mine",staging_people_list:"list",staging_people_get:"get",staging_people_save:"save",staging_people_read:"read"};
-const STAGING_READ_ACTIONS = new Set([
-  "bootstrap",
-  "registration_options",
-  "today",
-  "employee_month",
-  "admin_pending_registrations",
-  "admin_bootstrap",
-  "admin_daily",
-  "admin_employee_day",
-  "admin_individual_report",
-  "admin_a4_employee_daily_report",
-  "admin_a4_org_monthly_report",
-  "admin_monthly_summary",
-  "admin_report_preview",
-  "staging_schedule",
-  "admin_employee_profile",
-  "admin_request_queue",
-]);
 
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -522,22 +492,6 @@ function officeLateIssues(list:any[]) {
     .join("\n");
 }
 
-// Read-only union: schedules define expected attendance even before the first clock event.
-async function loadScheduledAttendance(supabase:any,date:string) {
-  const [daily,schedules]=await Promise.all([
-    supabase.from("daily_attendance").select("*,employee:employees(id,employee_code,name,attendance_mode,assigned_office:offices(name)),office:offices(name)").eq("work_date",date),
-    supabase.from("employee_schedules").select("employee_id,work_date,schedule_status,required_hours,employee:employees(id,employee_code,name,attendance_mode,assigned_office:offices(name)),office:offices(name)").eq("work_date",date),
-  ]);
-  if(daily.error||schedules.error)throw daily.error||schedules.error;
-  const merged=new Map((daily.data||[]).map((r:any)=>[r.employee_id||r.employee?.id,r]));
-  for(const s of schedules.data||[]){
-    const r:any=merged.get(s.employee_id);
-    merged.set(s.employee_id,r?{...r,schedule_status:s.schedule_status??r.schedule_status,required_hours:s.required_hours??r.required_hours,employee:r.employee||s.employee,office:s.office||r.office}:
-      {...s,first_in_at:null,last_out_at:null,break_out_at:null,break_in_at:null,paid_work_hours:null,net_hours:null});
-  }
-  return {data:[...merged.values()],error:null};
-}
-
 async function loadOriginalReportData(
   supabase:any,
   date:string,
@@ -546,7 +500,32 @@ async function loadOriginalReportData(
     { data:dailyRows, error:dailyError },
     { data:eventRows, error:eventError },
   ] = await Promise.all([
-    loadScheduledAttendance(supabase,date),
+    supabase
+      .from("daily_attendance")
+      .select(`
+        work_date,
+        schedule_status,
+        work_status,
+        attendance_status,
+        first_in_at,
+        break_out_at,
+        break_in_at,
+        last_out_at,
+        paid_work_hours,
+        short_hours,
+        over_hours,
+        makeup_hours,
+        late_minutes,
+        employee:employees(
+          id,
+          employee_code,
+          name,
+          attendance_mode,
+          assigned_office:offices(name)
+        ),
+        office:offices(name)
+      `)
+      .eq("work_date", date),
 
     supabase
       .from("attendance_events")
@@ -1077,14 +1056,6 @@ Deno.serve(async (req) => {
     const action = url.searchParams.get("action") || "bootstrap";
     const body = req.method === "POST" ? await req.json().catch(() => ({})) : {};
 
-    if (!STAGING_READ_ACTIONS.has(action) && !Object.prototype.hasOwnProperty.call(STAGING_REQUEST_ACTIONS,action) && !Object.prototype.hasOwnProperty.call(STAGING_PERSONNEL_ACTIONS,action)) {
-      return json({
-        ok: false,
-        error: "STAGING_READ_ONLY",
-        message: "โหมดทดลองอ่านข้อมูลจริงได้ แต่ยังไม่อนุญาตให้แก้ไขข้อมูล",
-      }, 403);
-    }
-
     if (action === "cron_report_send") {
       const suppliedSecret = req.headers.get("x-cron-secret") || "";
       const expectedSecret = Deno.env.get("CRON_SECRET") || "";
@@ -1127,23 +1098,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    async function weeklyDays(employeeId:string){
-      const {data,error}=await supabase.from("employee_weekly_dayoffs").select("iso_dow").eq("employee_id",employeeId).eq("active",true).order("iso_dow");
-      if(error)throw error;
-      const days=["MON","TUE","WED","THU","FRI","SAT","SUN"];
-      return [...new Set((data||[]).filter((r:any)=>Number.isInteger(r.iso_dow)&&r.iso_dow>=1&&r.iso_dow<=7).map((r:any)=>days[r.iso_dow-1]))];
-    }
     const profile = await verifyLine(req);
-    if(Object.prototype.hasOwnProperty.call(STAGING_PERSONNEL_ACTIONS,action)){
-      const {data,error}=await supabase.rpc(action.startsWith("staging_self_profile")?"kitty_staging_self_profile_v1":"kitty_staging_personnel_v1",{actor:profile.userId,operation:STAGING_PERSONNEL_ACTIONS[action],payload:body});
-      if(error){const known=["UNAUTHENTICATED","FORBIDDEN","ALREADY_EMPLOYEE","INVALID_NAME","NOT_FOUND","INVALID_REQUEST","STALE_PROFILE","CODE_IMMUTABLE","HO_ONLY","DUPLICATE_CODE","INVALID_DAYOFF","REGISTRATION_REQUIRED","APPROVAL_REQUIRED","INVALID_FIELDS","INVALID_PHONE","INVALID_EMAIL"];
-        const message=known.includes(error.message)?error.message:error.code==="23505"?"DUPLICATE_CODE":"PERSONNEL_SERVICE_ERROR";
-        return json({ok:false,error:message},message==="FORBIDDEN"?403:message==="PERSONNEL_SERVICE_ERROR"?503:400);
-      }
-      if(action==="staging_people_get" && data?.profile?.employee_id && !data.profile.id){data.profile.weekly_dayoffs=await weeklyDays(data.profile.employee_id)}
-      if(action==="staging_self_profile")data.pictureUrl=profile.pictureUrl||null;
-      return json(data);
-    }
 
 
     if (action === "registration_options") {
@@ -1249,180 +1204,7 @@ Deno.serve(async (req) => {
     if (currentAdminError) throw currentAdminError;
 
     const employee = currentEmployee;
-    let admin = currentAdmin;
-    // New HR grants are deliberately not stored in public.admins. Allow only
-    // existing scoped read endpoints here; live mutations use their own gateway.
-    if (!admin && STAGING_READ_ACTIONS.has(action)) {
-      const {data:identity,error:identityError}=await supabase.rpc('kitty_live_access_v1',{actor:profile.userId,operation:'identity',payload:{}});
-      if(identityError)throw identityError;
-      if(identity?.ok&&identity.role==='HR')admin={id:identity.registration?.id,role:'HR'};
-    }
-    // Admin may inspect the HR workspace, but the preview only narrows access.
-    const isHR = String(admin?.role || "").toUpperCase() === "HR" || (!!admin && body.previewRole === "HR");
-    let hrEmployees: any[] = [];
-    if (isHR) {
-      const allowedActions = new Set(["bootstrap", "today", "employee_month", "admin_bootstrap", "admin_daily", "admin_employee_day", "admin_monthly_summary", "admin_individual_report", "staging_schedule", "admin_employee_profile", "admin_request_queue"]);
-      if (!allowedActions.has(action) && !Object.prototype.hasOwnProperty.call(STAGING_REQUEST_ACTIONS,action)) return json({ok:false,error:"ADMIN_REQUIRED"},403);
-      const {data, error} = await supabase.from("employees").select("id,employee_code,name,attendance_mode");
-      if (error) throw error;
-      hrEmployees = (data || []).filter((e:any) => /^HO/i.test(e.employee_code || "") && !["MULTI_BRANCH", "DRIVER"].includes(String(e.attendance_mode).toUpperCase()));
-    }
-    const hrIds = new Set(hrEmployees.map(e => e.id));
-    const hrReportIds = new Set(hrEmployees.filter(e => !/\b(shane|peet)\b/i.test(e.name || "")).map(e => e.id));
-    if (isHR && action === "admin_employee_day" && !hrIds.has(String(body.employeeId || ""))) return json({ok:false,error:"FORBIDDEN"},403);
-
-    if (Object.prototype.hasOwnProperty.call(STAGING_REQUEST_ACTIONS,action)) {
-      const operation=STAGING_REQUEST_ACTIONS[action];
-      if (["review","queue","report"].includes(operation) && !admin) return json({ok:false,error:"FORBIDDEN"},403);
-      if (["submit","cancel","mine","balance"].includes(operation) && !employee) return json({ok:false,error:"EMPLOYEE_REQUIRED"},403);
-      const {data,error}=await supabase.rpc(action.startsWith("staging_ot_")?"kitty_staging_overtime_v1":"kitty_staging_request_v1",{
-        actor:profile.userId,operation,payload:{...body,previewRole:isHR?"HR":undefined},
-      });
-      if(error) {
-        const known=["FORBIDDEN","UNAUTHENTICATED","AMBIGUOUS_IDENTITY","EMPLOYEE_REQUIRED","INVALID_REQUEST","INVALID_DATE","INVALID_LEAVE","INVALID_EVENT","FUTURE_EVENT","IDEMPOTENCY_CONFLICT","NOT_FOUND","INVALID_DECISION","REJECTION_REASON_REQUIRED","INVALID_REASON","ALREADY_REVIEWED","INVALID_REPORT"];
-        const otErrors=["INVALID_OT_MODE","OT_SCHEDULE_REQUIRED","OT_SOURCE_NOT_FINAL","OT_WINDOW_EXPIRED","OT_INSUFFICIENT_MINUTES","OT_SCHEDULE_CHANGED"];
-        const message=known.includes(error.message)||otErrors.includes(error.message)?error.message:error.code==="23505"?"DUPLICATE_PENDING_REQUEST":"REQUEST_SERVICE_ERROR";
-        const status=["FORBIDDEN","UNAUTHENTICATED","AMBIGUOUS_IDENTITY"].includes(message)?403:message==="NOT_FOUND"?404:["ALREADY_REVIEWED","DUPLICATE_PENDING_REQUEST","IDEMPOTENCY_CONFLICT"].includes(message)?409:message==="REQUEST_SERVICE_ERROR"?503:400;
-        return json({ok:false,error:message},status);
-      }
-      return json(data);
-    }
-
-    if (action === "admin_employee_profile") {
-      if (!admin) return json({ok:false,error:"ADMIN_REQUIRED"},403);
-      const id=String(body.employeeId || "");
-      if (!id) return json({ok:false,error:"EMPLOYEE_REQUIRED"},400);
-      if (isHR && !hrIds.has(id)) return json({ok:false,error:"FORBIDDEN"},403);
-      const {data:record,error}=await supabase.from("employees").select("*").eq("id",id).maybeSingle();
-      if (error) throw error;
-      if (!record) return json({ok:false,error:"EMPLOYEE_NOT_FOUND"},404);
-      // Return only approved personnel fields, never arbitrary employee columns.
-      const profile:Record<string,unknown>={};
-      for (const key of ["id","employee_code","name","attendance_mode","active","line_user_id","default_office_id","office_id","weekly_dayoff","weekly_dayoffs","weekly_days_off","weekly_off_days","day_off","phone","email","position","department"]) {
-        if (Object.prototype.hasOwnProperty.call(record,key)) profile[key]=record[key];
-      }
-      profile.weekly_dayoffs=await weeklyDays(id);
-      const officeId=record.assigned_office_id || record.default_office_id || record.office_id;
-      let office=null;
-      if (officeId) {
-        const result=await supabase.from("offices").select("id,office_code,name").eq("id",officeId).maybeSingle();
-        if (result.error) throw result.error;
-        office=result.data;
-      }
-      return json({ok:true,employee:profile,office});
-    }
-    if (action === "admin_request_queue") {
-      if (!admin) return json({ok:false,error:"ADMIN_REQUIRED"},403);
-      const warnings:string[]=[];
-      async function pending(table:string,columns:string,kind:string) {
-        let query=supabase.from(table).select(columns).eq("status","PENDING");
-        if (isHR) query=query.in("employee_id",[...hrIds]);
-        const result=await query.order("created_at",{ascending:false}).limit(100);
-        if (result.error) {
-          if (["42P01","PGRST205"].includes(result.error.code)) {warnings.push(kind==="leave"?"ยังไม่เชื่อมข้อมูลคำขอลา":"ยังไม่เชื่อมข้อมูลคำขอแก้เวลา");return [];}
-          throw result.error;
-        }
-        return (result.data||[]).map(r=>({...r,kind}));
-      }
-      const [leave,correction]=await Promise.all([
-        pending("leave_requests_v2","id,employee_id,leave_date,duration,status,reason,created_at","leave"),
-        pending("attendance_correction_requests","id,employee_id,work_date,requested_event_type,requested_event_at,status,reason,created_at","correction"),
-      ]);
-      const rows=[...leave,...correction].sort((a,b)=>String(b.created_at).localeCompare(String(a.created_at)));
-      const ids=[...new Set(rows.map(r=>r.employee_id))];
-      let people:any[]=[];
-      if(ids.length){const result=await supabase.from("employees").select("id,employee_code,name").in("id",ids);if(result.error)throw result.error;people=result.data||[];}
-      return json({ok:true,rows:rows.map(r=>({...r,employee:people.find(p=>p.id===r.employee_id)||null})),warnings,limitPerType:100});
-    }
-
-    if (action === "admin_individual_report") {
-      if (!admin) return json({ok:false,error:"ADMIN_REQUIRED"},403);
-      const employeeId = String(body.employeeId || "");
-      const month = String(body.month || "");
-      if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month) || Number(month.slice(0,4)) < 1900 || Number(month.slice(0,4)) > 9998) return json({ok:false,error:"INVALID_MONTH"},400);
-      if (!employeeId) return json({ok:false,error:"EMPLOYEE_REQUIRED"},400);
-      if (isHR && !hrReportIds.has(employeeId)) return json({ok:false,error:"FORBIDDEN"},403);
-      const {data:person,error:personError} = await supabase.from("employees").select("id,employee_code,name,attendance_mode,active").eq("id",employeeId).maybeSingle();
-      if (personError) throw personError;
-      if (!person) return json({ok:false,error:"EMPLOYEE_NOT_FOUND"},404);
-      const start = month + "-01";
-      const next = new Date(start + "T00:00:00Z");
-      next.setUTCMonth(next.getUTCMonth()+1);
-      const end = next.toISOString().slice(0,10);
-      const [daily,schedules] = await Promise.all([
-        supabase.from("daily_attendance").select("work_date,schedule_status,first_in_at,break_out_at,break_in_at,last_out_at,paid_work_hours,short_hours,over_hours,makeup_hours,work_status").eq("employee_id",employeeId).gte("work_date",start).lt("work_date",end).order("work_date"),
-        supabase.from("employee_schedules").select("work_date,schedule_status,notes").eq("employee_id",employeeId).gte("work_date",start).lt("work_date",end).order("work_date"),
-      ]);
-      if (daily.error || schedules.error) throw daily.error || schedules.error;
-      // Report only real submitted records. A missing request table is NOT an empty history.
-      const warnings:string[] = [];
-      async function requestRows(table:string, dateColumn:string, columns:string, label:string) {
-        const found = new Map();
-        for (const column of [dateColumn,"created_at"]) {
-          for (let offset=0;;offset+=500) {
-            const result = await supabase.from(table).select(columns).eq("employee_id",employeeId)
-              .gte(column,column==="created_at" ? start+"T00:00:00+07:00" : start)
-              .lt(column,column==="created_at" ? end+"T00:00:00+07:00" : end)
-              .order("id").range(offset,offset+499);
-            if (result.error) {
-              if (["42P01","PGRST205"].includes(result.error.code)) { warnings.push(`ยังไม่เชื่อมประวัติ${label} จึงยืนยันไม่ได้ว่าไม่มีคำขอ`); return []; }
-              throw result.error;
-            }
-            for (const row of result.data || []) found.set(row.id,row);
-            if ((result.data || []).length < 500) break;
-          }
-        }
-        return [...found.values()];
-      }
-      const liveHistory = body.requestSource === 'live';
-      const [leave,corrections] = liveHistory ? [[],[]] : await Promise.all([
-        requestRows("leave_requests_v2","leave_date","id,leave_date,duration,status,reason,created_at","คำขอลา"),
-        requestRows("attendance_correction_requests","work_date","id,work_date,requested_event_type,requested_event_at,reason,status,created_at,approved_sequence_in_month,deduction_amount","คำขอแก้เวลา"),
-      ]);
-      const requests = [
-        ...leave.map(r=>({...r,kind:"leave",effective_date:r.leave_date})),
-        ...corrections.map(r=>({...r,kind:"correction",effective_date:r.work_date})),
-      ].sort((a,b)=>String(a.created_at).localeCompare(String(b.created_at)));
-      if(liveHistory){
-        const payload={employeeId,month,...(isHR?{previewRole:'HR'}:{})};
-        const results=await Promise.all([
-          supabase.rpc('kitty_live_request_v1',{actor:profile.userId,operation:'report',payload}),
-          supabase.rpc('kitty_live_overtime_v1',{actor:profile.userId,operation:'report',payload}),
-        ]);
-        for(const result of results){
-          if(result.error)throw result.error;
-          if(!result.data?.ok||!Array.isArray(result.data.rows))throw Error('LIVE_HISTORY_UNAVAILABLE');
-          if(result.data.rows.length>=1000)throw Error('LIVE_HISTORY_LIMIT');
-          requests.push(...result.data.rows.map((r:any)=>({...r,sandbox:false,effective_date:r.kind==='overtime'?(r.mode==='USE_PRIOR'?r.target_date:r.source_date):r.work_date})));
-        }
-      }
-      const byDaily = new Map<string,any>((daily.data || []).map(r=>[r.work_date,r]));
-      const bySchedule = new Map<string,any>((schedules.data || []).map(r=>[r.work_date,r]));
-      const rows = [];
-      for (let day=1;day<=new Date(next.getTime()-86400000).getUTCDate();day++) {
-        const date = month+"-"+String(day).padStart(2,"0");
-        const schedule = bySchedule.get(date);
-        rows.push({work_date:date,schedule_status:schedule?.schedule_status || (date>bangkokDate()?"FUTURE":"NO_SCHEDULE"),...byDaily.get(date),schedule_note:schedule?.notes || null,
-          requests:requests.filter(r=>r.effective_date===date || (r.kind==='overtime'&&r.target_date===date) || (r.created_at && new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Bangkok",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date(r.created_at))===date))});
-      }
-      if(liveHistory)for(const row of rows){
-        const approved=requests.filter((r:any)=>r.kind==='overtime'&&r.status==='APPROVED'&&r.effective_date===row.work_date);
-        row.ot_waiting=approved.filter((r:any)=>r.settlement_state!=='READY').length;
-        row.ot_used_hours=row.ot_waiting?null:approved.reduce((total:number,r:any)=>total+Number(r.minutes||0),0)/60;
-      }
-      return json({ok:true,employee:person,month,rows,warnings,otLive:liveHistory,requestHistory:liveHistory?'live':'legacy',generated_at:new Date().toISOString()});
-    }
-
-    if (action === "staging_schedule") {
-      if (!admin) return json({ok:false,error:"ADMIN_REQUIRED"},403);
-      const date = String(body.date || bangkokDate());
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return json({ok:false,error:"INVALID_DATE"},400);
-      let query = supabase.from("employee_schedules").select("*,employee:employees(id,employee_code,name,attendance_mode),office:offices(name),shift:shifts(*)").eq("work_date",date);
-      if (isHR) query = query.in("employee_id", [...hrIds]);
-      const {data,error} = await query;
-      if (error) throw error;
-      return json({ok:true,date,rows:data || []});
-    }
+    const admin = currentAdmin;
 
     if (action === "bootstrap") {
       return json({
@@ -1430,16 +1212,15 @@ Deno.serve(async (req) => {
         profile,
         employee,
         isAdmin: !!admin,
-        adminRole: admin?.role || null,
         serverTime: new Date().toISOString(),
       });
     }
 
-    if (!employee && (!admin || ["today", "employee_month"].includes(action))) return json({ ok: false, error: "EMPLOYEE_NOT_REGISTERED", profile }, 403);
+    if (!employee) return json({ ok: false, error: "EMPLOYEE_NOT_REGISTERED", profile }, 403);
 
     if (action === "today") {
       const date = String(body.date || new Date().toISOString().slice(0, 10));
-      const [{ data: schedule, error: scheduleError }, { data: events, error: eventError }, { data: daily, error: dailyError }] = await Promise.all([
+      const [{ data: schedule }, { data: events }, { data: daily }] = await Promise.all([
         supabase.from("employee_schedules").select("*,office:offices(*),shift:shifts(*)")
           .eq("employee_id", employee.id).eq("work_date", date).maybeSingle(),
         supabase.from("attendance_events").select("*")
@@ -1447,7 +1228,6 @@ Deno.serve(async (req) => {
         supabase.from("daily_attendance").select("*")
           .eq("employee_id", employee.id).eq("work_date", date).maybeSingle(),
       ]);
-      if (scheduleError || eventError || dailyError) throw scheduleError || eventError || dailyError;
       return json({ ok: true, employee, schedule, events, daily });
     }
 
@@ -1898,7 +1678,7 @@ Deno.serve(async (req) => {
           .order("office_code")
       ]);
       if (error || officeError) throw error || officeError;
-      return json({ ok:true, employees:isHR ? (employees || []).filter(e => hrIds.has(e.id)) : employees || [], offices:isHR ? [] : offices || [] });
+      return json({ ok:true, employees:employees || [], offices:offices || [] });
     }
 
 
@@ -1973,14 +1753,17 @@ Deno.serve(async (req) => {
       if (!admin) return json({ ok:false,error:"ADMIN_REQUIRED" }, 403);
       const date = String(body.date || bangkokDate());
 
-      const {data:visibleRows}=await loadScheduledAttendance(supabase,date);
-      const rows = isHR ? visibleRows.filter(r => hrIds.has(r.employee_id)) : visibleRows;
+      const { data: rows, error } = await supabase
+        .from("daily_attendance")
+        .select(`*,employee:employees(id,employee_code,name,attendance_mode)`)
+        .eq("work_date", date)
+        .order("employee_id");
+      if (error) throw error;
 
       const summary = {
         checked_in: 0,
         checked_out: 0,
         not_checked_in: 0,
-        on_break: 0,
         off: 0,
         leave: 0,
       };
@@ -1988,7 +1771,6 @@ Deno.serve(async (req) => {
       for (const r of rows || []) {
         if (r.first_in_at) summary.checked_in += 1;
         if (r.last_out_at) summary.checked_out += 1;
-        if (r.first_in_at && !r.last_out_at && r.break_out_at && (!r.break_in_at || Date.parse(r.break_out_at)>Date.parse(r.break_in_at))) summary.on_break += 1;
 
         if (r.schedule_status === "OFF") {
           summary.off += 1;
@@ -2000,7 +1782,7 @@ Deno.serve(async (req) => {
           continue;
         }
 
-        if (["WORK","WFH"].includes(r.schedule_status) && !r.first_in_at) {
+        if (r.schedule_status === "WORK" && !r.first_in_at) {
           summary.not_checked_in += 1;
         }
       }
@@ -2392,7 +2174,6 @@ Deno.serve(async (req) => {
 
       const grouped: Record<string, any> = {};
       for (const r of data || []) {
-        if (isHR && !hrReportIds.has(r.employee_id)) continue;
         if (!r.employee?.active) continue;
         const key = r.employee_id;
         if (!grouped[key]) grouped[key] = {
@@ -2447,8 +2228,27 @@ Deno.serve(async (req) => {
       try {
         const message = await buildLineReport(supabase, date, reportType, true);
 
+        await supabase.from("report_logs").insert({
+          report_date: date,
+          report_type: reportType === "MIDDAY"
+            ? "PREVIEW_MIDDAY"
+            : "PREVIEW_END_DAY",
+          status: "PREVIEW",
+          message_preview: message.slice(0,500),
+          error_message: null,
+        });
+
         return json({ ok:true, date, reportType, message });
       } catch (error) {
+        await supabase.from("report_logs").insert({
+          report_date: date,
+          report_type: reportType === "MIDDAY"
+            ? "PREVIEW_MIDDAY"
+            : "PREVIEW_END_DAY",
+          status: "ERROR",
+          message_preview: null,
+          error_message: String(error?.message || error).slice(0,1000),
+        });
         throw error;
       }
     }
@@ -2589,7 +2389,6 @@ Deno.serve(async (req) => {
 
     return json({ ok:false,error:"UNKNOWN_ACTION" }, 404);
   } catch (e) {
-    if (["MISSING_LINE_TOKEN","INVALID_LINE_TOKEN"].includes(String(e?.message))) return json({ok:false,error:String(e.message)},401);
     console.error(e);
     return json({ ok:false,error:String(e?.message || e) }, 500);
   }
