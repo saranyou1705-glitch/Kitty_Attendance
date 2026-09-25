@@ -1,4 +1,11 @@
 const {test}=require('node:test');
+test('live OT verifies identity and never reaches legacy or trial RPC',async()=>{
+ const calls=[];const {handle}=setup('EMPLOYEE',{overtime:async(...args)=>{calls.push(args);return {ok:true}}});
+ for(const op of ['submit','balance','mine','queue','report','review','cancel'])await handle('token','live_ot_'+op,{actor:'forged',previewRole:'HR'});
+ assert.equal(calls.length,7);assert(calls.every(c=>c[0]==='verified-line'));assert.equal(calls[0][2].previewRole,'HR');
+ await assert.rejects(handle('token','live_ot_delete'),/ACTION_NOT_CONNECTED/);
+ await assert.rejects(setup().handle('token','live_ot_submit'),/ACTION_NOT_CONNECTED/);
+});
 test('only actual Admin can edit a real event; Bangkok date and actor token preserved',async()=>{
  const p={eventId:'11111111-1111-4111-8111-111111111111',eventAt:'2026-09-24T08:30:00+07:00',reason:'Correction'};
  for(const role of ['HR','EMPLOYEE'])await assert.rejects(setup(role).handle('token','admin_update_event',p),/ADMIN_REQUIRED/);

@@ -5,6 +5,7 @@ type Dependencies = {
  access:(actor:string,operation:string,payload:Record<string,unknown>)=>Promise<any>;
  legacy:(token:string,action:string,payload:Record<string,unknown>)=>Promise<any>;
  requests?:(actor:string,operation:string,payload:Record<string,unknown>)=>Promise<any>;
+ overtime?:(actor:string,operation:string,payload:Record<string,unknown>)=>Promise<any>;
 };
 export function createGateway(deps:Dependencies){
  return async function handle(token:string,action:string,body:Record<string,any>={}){
@@ -19,6 +20,11 @@ export function createGateway(deps:Dependencies){
   if(Object.prototype.hasOwnProperty.call(requests,action)){
    if(!deps.requests)throw Error('ACTION_NOT_CONNECTED');
    return deps.requests(profile.userId,requests[action],body);
+  }
+  const overtime:Record<string,string>={live_ot_submit:'submit',live_ot_review:'review',live_ot_cancel:'cancel',live_ot_mine:'mine',live_ot_queue:'queue',live_ot_report:'report',live_ot_balance:'balance'};
+  if(Object.prototype.hasOwnProperty.call(overtime,action)){
+   if(!deps.overtime)throw Error('ACTION_NOT_CONNECTED');
+   return deps.overtime(profile.userId,overtime[action],body);
   }
   const identity=await deps.access(profile.userId,'identity',{});
   if(!identity?.ok)throw Error('IDENTITY_UNAVAILABLE');

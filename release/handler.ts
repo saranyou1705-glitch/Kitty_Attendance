@@ -6,6 +6,12 @@ export function createHandler(runtime:Runtime){
  if(base.protocol!=='https:'||base.hostname!=='rlqecfzddxpywbbbiirg.supabase.co')throw Error('INVALID_BACKEND');
  const legacyURL=new URL('/functions/v1/rapid-processor',base);
  const call=createGateway({
+  overtime:async(actor,operation,payload)=>{
+   const response=await fetcher(new URL('/rest/v1/rpc/kitty_live_overtime_v1',base),{method:'POST',headers:{apikey:runtime.serviceKey,Authorization:'Bearer '+runtime.serviceKey,'Content-Type':'application/json'},body:JSON.stringify({actor,operation,payload})});
+   const result=await response.json();
+   if(!response.ok)throw Error(result.message||'OT_SERVICE_ERROR');
+   return result;
+  },
   requests:async(actor,operation,payload)=>{
    const response=await fetcher(new URL('/rest/v1/rpc/kitty_live_request_v1',base),{method:'POST',headers:{apikey:runtime.serviceKey,Authorization:'Bearer '+runtime.serviceKey,'Content-Type':'application/json'},body:JSON.stringify({actor,operation,payload})});
    const result=await response.json();
@@ -54,7 +60,8 @@ export function createHandler(runtime:Runtime){
    const message=error instanceof Error?error.message:'INTERNAL_ERROR';
    const safe=['MISSING_LINE_TOKEN','INVALID_LINE_TOKEN','INVALID_FIELDS','INVALID_NAME','ADMIN_REQUIRED','FORBIDDEN','ALREADY_ADMIN','AMBIGUOUS_IDENTITY','SELF_ROLE_CHANGE','STALE_REGISTRATION','NOT_FOUND','ALREADY_REVIEWED','NOT_APPROVED','ACTION_NOT_CONNECTED','ACTIVE_EMPLOYEE_REQUIRED','INVALID_EVENT_TYPE','INVALID_LOCATION','PRODUCTION_CLOCK_NOT_ENABLED','GPS_INACCURATE','OUTSIDE_OFFICE','OFFICE_NOT_CONFIGURED','INVALID_STANDARD_SEQUENCE','INVALID_MULTI_BRANCH_SEQUENCE','INVALID_DRIVER_ACTION'];
    const workflow=['UNAUTHENTICATED','EMPLOYEE_REQUIRED','EMPLOYEE_INACTIVE','INVALID_REQUEST','INVALID_DATE','INVALID_LEAVE','INVALID_EVENT','FUTURE_EVENT','IDEMPOTENCY_CONFLICT','ALREADY_REVIEWED','INVALID_DECISION','REJECTION_REASON_REQUIRED','INVALID_REASON','INVALID_REPORT','WORK_SCHEDULE_REQUIRED','HALF_DAY_REQUIRES_CLOCK','LEAVE_ALREADY_APPROVED','EVENT_ALREADY_EXISTS','INVALID_EVENT_ORDER','USE_ADMIN_BRANCH_CORRECTION'];
-   const code=safe.includes(message)||workflow.includes(message)?message:'SERVICE_UNAVAILABLE';
+   const ot=['INVALID_OT_MODE','OT_SCHEDULE_REQUIRED','OT_SCHEDULE_CHANGED','OT_WINDOW_EXPIRED','DUPLICATE_PENDING_REQUEST','OT_OFFICE_ONLY'];
+   const code=safe.includes(message)||workflow.includes(message)||ot.includes(message)?message:'SERVICE_UNAVAILABLE';
    return new Response(JSON.stringify({ok:false,error:code}),{status:code==='SERVICE_UNAVAILABLE'?503:code.includes('TOKEN')?401:['ADMIN_REQUIRED','FORBIDDEN'].includes(code)?403:400,headers});
   }
  };

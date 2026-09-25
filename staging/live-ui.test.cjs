@@ -3,6 +3,25 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const vm=require('node:vm');
 const source=fs.readFileSync(__dirname+'/app.js','utf8').replace('navigation();init();','');
+test('prior-day summaries show excess or shortage, not target-day projection',()=>{
+ const {run}=setup();
+ const p="{source_date:'2026-09-24',source_required_minutes:540}";
+ assert(run(`priorOtSummary(${p},'USE_PRIOR',{daily:{last_out_at:'done',paid_work_hours:10.5}})`).includes('1 ชม. 30 นาที'));
+ assert(run(`priorOtSummary(${p},'MAKEUP_NEXT',{daily:{last_out_at:'done',paid_work_hours:7.75}})`).includes('1 ชม. 15 นาที'));
+ assert(run(`priorOtSummary(${p},'USE_PRIOR',{daily:{paid_work_hours:0}})`).includes('ยังลงเวลาไม่ครบ'));
+});
+test('today makeup finds previous working day then submits shortage date',async()=>{
+ const calls=[];const {run}=setup(async(url,opt)=>{const b=JSON.parse(opt.body);calls.push(b);return {ok:true,json:async()=>({ok:true,source_date:'2026-09-18',target_date:'2026-09-21'})}});
+ const pair=await run("otPairForToday('MAKEUP_NEXT','2026-09-21')");
+ assert.equal(pair.requestDate,'2026-09-18');assert.deepEqual(calls,[{mode:'USE_PRIOR',date:'2026-09-21'},{mode:'MAKEUP_NEXT',date:'2026-09-18'}]);
+});
+test('daily summary distinguishes shortage, excess, complete and unfinished',()=>{
+ const {run}=setup();run("var d={last_out_at:'done',first_in_at:'start',paid_work_hours:9,required_hours:9,short_hours:0,over_hours:0}");
+ assert.equal(run("dailyResult(d,{},'2026-09-24')"),'ทำงานครบ');
+ assert(run("dailyResult({...d,short_hours:1.5},{},'2026-09-24')").includes('ทำงานขาด 1 ชม. 30 นาที'));
+ assert(run("dailyResult({...d,over_hours:2},{},'2026-09-24')").includes('ทำงานเกิน 2 ชม. 0 นาที'));
+ assert(run("dailyResult({...d,last_out_at:null},{},'2026-09-24')").includes('ยังไม่สรุปทั้งวัน'));
+});
 test('login, loading and connection errors do not label Production as Staging',()=>{
  const login=source.slice(source.indexOf('async function init(){'),source.indexOf('function dayPicker()'));
  assert(!/STAGING|เว็บ Staging/.test(login));assert(login.includes('กำลังเชื่อมต่อ'));assert(login.includes('ยังไม่เชื่อมต่อข้อมูล'));
@@ -35,10 +54,10 @@ test('older OT response cannot overwrite a newer refresh',async()=>{
 });
 test('OT form omits balance card and hours table while allowing a new request in both settlement states',async()=>{
  for(const status of ['WAITING','READY']){
-  const {run,node}=setup(async url=>({ok:true,json:async()=>new URL(url).searchParams.get('action')==='staging_ot_mine'?{ok:true,rows:[]}:{ok:true,settlement_state:status,available_minutes:90}}));
+  const {run,node}=setup(async url=>({ok:true,json:async()=>new URL(url).searchParams.get('action')==='staging_ot_mine'?{ok:true,rows:[]}:{ok:true,source_date:'2026-09-23',source_required_minutes:540,settlement_state:status,available_minutes:90,daily:{last_out_at:'2026-09-23T12:00:00Z',paid_work_hours:10.5}}}));
   const form=node('#overtimeForm'),send={disabled:true},label={hidden:false},reason={disabled:false,closest:()=>label};
   form.elements={mode:{value:'USE_PRIOR'},date:{value:'2026-09-24'}};form.dataset={};form.querySelector=s=>s==='[data-send-request]'?send:reason;
-  await run('loadOvertimeBalance({disabled:false})');assert.equal(node('#otBalance').innerHTML,'');assert.equal(send.disabled,false);assert.equal(reason.disabled,false);assert.equal(form.dataset.otBlocked,'false');
+  await run('loadOvertimeBalance({disabled:false})');assert(node('#otBalance').innerHTML.includes('1 ชม. 30 นาที'));assert(!node('#otBalance').innerHTML.includes('<table'));assert.equal(send.disabled,false);assert.equal(reason.disabled,false);assert.equal(form.dataset.otBlocked,'false');
   const html=run('overtimeView()');assert(html.includes('data-send-request="true"'));assert(html.includes('name="reason"'));
  }
 });
@@ -57,8 +76,8 @@ test('production requests route separately and isolate old trial drafts',async()
  assert.equal(run('drafts().length'),0);
  await run("api('staging_request_review',{id:'real'})");
  assert(calls[0][0].includes('kitty-attendance-live?action=live_request_review'));assert.equal(calls[0][1].previewRole,'HR');
- await run("api('staging_ot_queue')");assert(calls[1][0].includes('rapid-processor-staging?action=staging_ot_queue'));
- assert.equal(run("liveRequest('leave')"),true);assert.equal(run("liveRequest('overtime')"),false);
+ await run("api('staging_ot_queue')");assert(calls[1][0].includes('kitty-attendance-live?action=live_ot_queue'));
+ assert.equal(run("liveRequest('leave')"),true);assert.equal(run("liveRequest('overtime')"),true);
 });
 function setup(fetcher){
  const nodes=new Map(),listeners={},storage=new Map();
@@ -72,7 +91,7 @@ test('Bangkok clock converts timestamps and no fixed demo clock remains',()=>{
 test('calendar loads only authenticated employee endpoints for selected month and day',async()=>{
  const calls=[];const {run}=setup(async(url,options)=>{calls.push([new URL(url).searchParams.get('action'),JSON.parse(options.body)]);return {ok:true,json:async()=>({ok:true,rows:[],events:[],daily:null})}});
  run("state.boot={employee:{id:'self',name:'Actual Person'}};state.month='2026-08';state.selected='2026-08-12'");
- const html=await run('calendarView()');assert(html.includes('Actual Person'));assert.deepEqual(calls,[['employee_month',{month:'2026-08'}],['today',{date:'2026-08-12'}]]);assert(!html.includes('09:02'));
+ const html=await run('calendarView()');assert(html.includes('Actual Person'));assert.deepEqual(calls,[['employee_month',{month:'2026-08'}],['today',{date:'2026-08-12'}],['staging_ot_mine',{}]]);assert(!html.includes('09:02'));
 });
 test('failed load displays error, never fabricated attendance',async()=>{
  const {run,node}=setup();run("state.connected=true;state.boot={employee:{id:'self'}};state.page='clock'");await run('render()');assert(node('#content').innerHTML.includes('โหลดข้อมูลไม่สำเร็จ'));assert(!node('#content').innerHTML.includes('พิกัดพร้อม'));
