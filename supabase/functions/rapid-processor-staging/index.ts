@@ -1395,7 +1395,7 @@ Deno.serve(async (req) => {
         const date = month+"-"+String(day).padStart(2,"0");
         const schedule = bySchedule.get(date);
         rows.push({work_date:date,schedule_status:schedule?.schedule_status || (date>bangkokDate()?"FUTURE":"NO_SCHEDULE"),...byDaily.get(date),schedule_note:schedule?.notes || null,
-          requests:requests.filter(r=>r.effective_date===date || (r.created_at && new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Bangkok",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date(r.created_at))===date))});
+          requests:requests.filter(r=>r.effective_date===date || (r.kind==='overtime'&&r.target_date===date) || (r.created_at && new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Bangkok",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date(r.created_at))===date))});
       }
       if(liveHistory)for(const row of rows){
         const approved=requests.filter((r:any)=>r.kind==='overtime'&&r.status==='APPROVED'&&r.effective_date===row.work_date);

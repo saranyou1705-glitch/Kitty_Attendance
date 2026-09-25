@@ -1,4 +1,9 @@
 const {test}=require('node:test');
+test('employee clock and own calendar display approved expected departure',async()=>{
+ const {run}=setup(async url=>({ok:true,json:async()=>new URL(url).searchParams.get('action')==='staging_ot_mine'?{ok:true,rows:[{id:'ot',kind:'overtime',mode:'USE_PRIOR',target_date:'2026-09-25',status:'APPROVED',sandbox:false,source_final:true,source_paid_minutes:602,source_required_minutes:540}]}:{ok:true,events:[],rows:[],daily:{first_in_at:'2026-09-25T02:00:00Z'},schedule:{}}}));
+ run("dateKey=()=> '2026-09-25';CONFIG.requestsLive=false;state.boot={employee:{id:'me',attendance_mode:'STANDARD'}};state.selected='2026-09-25';state.month='2026-09'");
+ for(const fn of ['clockView()','calendarView()']){const html=await run(fn);assert(html.includes('เวลาที่ควรออก'));assert(html.includes('16:58'))}
+});
 test('OT compares actual checkout with adjusted departure for both modes',()=>{
  const {run}=setup();run("var day={target_first_in_at:'2026-09-25T02:00:00Z',target_last_out_at:'2026-09-25T09:58:00Z'}");
  assert.equal(run('otDepartureResult(day,-62)'),'ออกครบตามเวลาที่ควรออก');

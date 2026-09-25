@@ -2,6 +2,14 @@ const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const ExcelJS=require('./vendor/exceljs-4.4.0.min.js');
 const report=require('./individual-report.js');
+test('employee and Excel departure share approved OT calculation and Bangkok date',async()=>{
+ const row={work_date:'2026-09-25',first_in_at:'2026-09-25T02:00:00Z',requests:[{id:'ot',kind:'overtime',mode:'USE_PRIOR',target_date:'2026-09-25',status:'APPROVED',sandbox:false,source_final:true,source_paid_minutes:602,source_required_minutes:540}]};
+ assert.equal(report.departure(row).label,'16:58');
+ const pending={...row,requests:row.requests.map(r=>({...r,status:'PENDING'}))};assert.equal(report.departure(pending).label,'18:00 · OT รออนุมัติ');
+ assert.equal(report.departure({...row,requests:row.requests.map(r=>({...r,mode:'MAKEUP_NEXT',source_paid_minutes:478}))}).label,'19:02');
+ const wb=report.build({...sample,otLive:true,rows:[row]},ExcelJS);const opened=new ExcelJS.Workbook();await opened.xlsx.load(await wb.xlsx.writeBuffer());const sheet=opened.worksheets[0];
+ assert.equal(sheet.getCell('M7').value,'เวลาที่ควรออก');assert.equal(sheet.getCell('M8').value.toISOString(),'2026-09-25T16:58:00.000Z');assert.equal(sheet.getCell('N8').value,'16:58');assert(!sheet.getCell('A5').value.includes('Staging'));
+});
 const sample={employee:{id:'x',employee_code:'HO-TEST',name:'Test employee'},month:'2026-09',generated_at:'2026-09-21T18:01:00Z',warnings:['ยังไม่เชื่อมประวัติคำขอลา'],rows:[
  {work_date:'2026-09-01',schedule_status:'WORK',first_in_at:'2026-09-01T02:00:00Z',break_out_at:'2026-09-01T05:00:00Z',break_in_at:'2026-09-01T06:00:00Z',last_out_at:'2026-09-01T11:00:00Z',paid_work_hours:8,short_hours:0,over_hours:0,makeup_hours:0,schedule_note:'=1+1',requests:[{kind:'correction',status:'APPROVED',effective_date:'2026-09-01',created_at:'2026-09-02T02:00:00Z',requested_event_type:'OUT',requested_event_at:'2026-09-01T11:00:00Z',approved_sequence_in_month:3,deduction_amount:200,reason:'ลืมลงเวลา'}]},
  {work_date:'2026-09-02',schedule_status:'NO_SCHEDULE',requests:[]}
