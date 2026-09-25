@@ -446,7 +446,9 @@ function priorOtSummary(data,mode,day){
  if(required==null)return '<p>ยังไม่พบชั่วโมงทำงานที่กำหนดของวันก่อนหน้า</p>';
  const delta=Math.round(Number(daily.paid_work_hours)*60)-Number(required);
  const minutes=Math.max(0,mode==='USE_PRIOR'?delta:-delta);
- return '<p class="ot-prior-summary"><span>วันทำงานก่อนหน้า ('+esc(data.source_date)+') '+(mode==='USE_PRIOR'?'ทำงานเกิน':'ทำงานขาด')+'</span><strong>'+hours(minutes/60)+'</strong></p>';
+ const departure=expectedDeparture(data.target_first_in_at,540+(mode==='MAKEUP_NEXT'?minutes:-minutes),data.target_date);
+ return '<p class="ot-prior-summary"><span>วันทำงานก่อนหน้า ('+esc(data.source_date)+') '+(mode==='USE_PRIOR'?'ทำงานเกิน':'ทำงานขาด')+'</span><strong>'+hours(minutes/60)+'</strong></p>'+
+ '<p class="ot-prior-summary ot-planned-departure"><span>เวลาที่ควรออกหากคำขอนี้ได้รับอนุมัติ</span><strong>'+esc(departure)+'</strong></p>';
 }
 async function loadOvertimeBalance(button){
  const form=$('#overtimeForm'),mode=form.elements.mode.value,date=form.elements.date.value,version=renderVersion,requestVersion=++otBalanceVersion;
