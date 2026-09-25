@@ -1,4 +1,11 @@
 const {test}=require('node:test');
+test('unsent OT form shows planned departure immediately for both modes',()=>{
+ const {run}=setup();run("var planning={source_date:'2026-09-24',target_date:'2026-09-25',source_required_minutes:540,target_first_in_at:'2026-09-25T02:00:00Z'}");
+ const use=run("priorOtSummary(planning,'USE_PRIOR',{daily:{last_out_at:'done',paid_work_hours:10+2/60}})");
+ assert(use.includes('16:58'));assert(use.includes('หากคำขอนี้ได้รับอนุมัติ'));assert(!use.includes('<table'));
+ const makeup=run("priorOtSummary(planning,'MAKEUP_NEXT',{daily:{last_out_at:'done',paid_work_hours:7+58/60}})");assert(makeup.includes('19:02'));
+ assert(run("priorOtSummary({...planning,target_first_in_at:null},'USE_PRIOR',{daily:{last_out_at:'done',paid_work_hours:10}})").includes('ยังไม่ลงเวลา'));
+});
 test('employee clock and own calendar display approved expected departure',async()=>{
  const {run}=setup(async url=>({ok:true,json:async()=>new URL(url).searchParams.get('action')==='staging_ot_mine'?{ok:true,rows:[{id:'ot',kind:'overtime',mode:'USE_PRIOR',target_date:'2026-09-25',status:'APPROVED',sandbox:false,source_final:true,source_paid_minutes:602,source_required_minutes:540}]}:{ok:true,events:[],rows:[],daily:{first_in_at:'2026-09-25T02:00:00Z'},schedule:{}}}));
  run("dateKey=()=> '2026-09-25';CONFIG.requestsLive=false;state.boot={employee:{id:'me',attendance_mode:'STANDARD'}};state.selected='2026-09-25';state.month='2026-09'");
