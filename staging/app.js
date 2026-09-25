@@ -355,7 +355,33 @@ function requestBadge(page){const kind=page==='employees'?'registration':page===
 function requestCategory(r){return r.kind==='overtime'?'correction':r.kind}
 function combineQueues(a,b){return {rows:[...(a.rows||[]),...(b.rows||[])].sort((x,y)=>String(y.created_at).localeCompare(String(x.created_at))),warnings:[...(a.warnings||[]),...(b.warnings||[])]}}
 function overtimeState(r){return r.settlement_state==='READY'?`${r.status==='APPROVED'?'ใช้ชดแล้ว':'ชดได้'} ${hours(Number(r.minutes)/60)} · ยังขาด ${hours(Number(r.remaining_short_minutes||0)/60)}`:r.settlement_state==='SCHEDULE_CHANGED'?'ตารางงานเปลี่ยน กรุณาให้ HR ตรวจสอบ':r.settlement_state==='INACTIVE'?'ไม่ได้ใช้ชั่วโมง':'รอตรวจเวลาครบทั้งสองวัน'}
-function overtimeDetails(r,label=r.status==='APPROVED'?'ใช้ชดแล้ว':'ชั่วโมงที่ใช้ได้'){return `<div class="ot-total"><span>${esc(label)}</span><strong>${r.settlement_state==='READY'?hours(Number(r.available_minutes??r.minutes)/60):'ยังสรุปไม่ได้'}</strong>${r.settlement_state!=='READY'?`<small>${esc(overtimeState(r))}</small>`:''}</div>`+table(['วันทำงาน','เวลาสุทธิ','เวลาที่กำหนด'],[[r.source_date||'—',hours(r.source_paid_minutes==null?null:r.source_paid_minutes/60),hours(r.source_required_minutes==null?null:r.source_required_minutes/60)],[r.target_date||'—',hours(r.target_paid_minutes==null?null:r.target_paid_minutes/60),hours(r.target_required_minutes==null?null:r.target_required_minutes/60)]])}
+function otSourceMinutes(r){
+ if(r.source_final===false||r.source_paid_minutes==null||r.source_required_minutes==null)return null;
+ return Math.max(0,r.mode==='MAKEUP_NEXT'?Number(r.source_required_minutes)-Number(r.source_paid_minutes):Number(r.source_paid_minutes)-Number(r.source_required_minutes));
+}
+function expectedDeparture(firstIn,minutes,day){
+ if(!firstIn)return 'ยังไม่ลงเวลา';
+ const stamp=Date.parse(firstIn);if(!Number.isFinite(stamp)||minutes==null)return '—';
+ const departure=new Date(stamp+minutes*60000);
+ return time(departure.toISOString())+(dateKey(departure)!==day?' ('+displayDate(dateKey(departure))+')':'');
+}
+function overtimeDetails(r){
+ const amount=otSourceMinutes(r);
+ const label=r.mode==='MAKEUP_NEXT'?'เวลาที่ต้องทำชด':'ชั่วโมงที่ใช้ได้';
+ const adjustment=amount==null?null:(r.mode==='MAKEUP_NEXT'?amount:-amount);
+ return `<div class="ot-total"><span>${label}</span><strong>${amount==null?'วันก่อนหน้ายังลงเวลาไม่ครบ':hours(amount/60)}</strong></div>`+table(['วันทำงาน','เวลาสุทธิ','เวลาที่ควรออก'],[
+ [r.source_date||'—',hours(r.source_paid_minutes==null?null:r.source_paid_minutes/60),expectedDeparture(r.source_first_in_at,540,r.source_date)],
+ [r.target_date||'—',hours(r.target_paid_minutes==null?null:r.target_paid_minutes/60),expectedDeparture(r.target_first_in_at,adjustment==null?null:540+adjustment,r.target_date)]
+ ])+`<p class="ot-departure-result">${esc(otDepartureResult(r,adjustment))}</p>`;
+}
+function otDepartureResult(r,adjustment){
+ if(!r.target_first_in_at)return 'ยังไม่ลงเวลาเข้า';
+ if(adjustment==null)return 'รอข้อมูลวันทำงานก่อนหน้า';
+ if(!r.target_last_out_at)return 'รอเวลาออกงานจริง';
+ const delta=Math.round((Date.parse(r.target_last_out_at)-Date.parse(r.target_first_in_at))/60000)-(540+adjustment);
+ if(!Number.isFinite(delta))return 'ข้อมูลเวลาไม่ครบ';
+ return delta===0?'ออกครบตามเวลาที่ควรออก':delta<0?'ออกก่อนเวลาที่ควรออก '+hours(-delta/60):'ออกหลังเวลาที่ควรออก '+hours(delta/60);
+}
 function overtimeDescription(r){return `${r.mode==='USE_PRIOR'?'ใช้ชั่วโมงเกิน':'ชดชั่วโมงขาด'} ${esc(overtimeState(r))} · ${esc(r.source_date||'—')} → ${esc(r.target_date||'—')}`}
 async function requestQueue(){
  const scope=requestScope(),version=(queueVersions.get(scope)||0)+1;queueVersions.set(scope,version);

@@ -1,4 +1,18 @@
 const {test}=require('node:test');
+test('OT compares actual checkout with adjusted departure for both modes',()=>{
+ const {run}=setup();run("var day={target_first_in_at:'2026-09-25T02:00:00Z',target_last_out_at:'2026-09-25T09:58:00Z'}");
+ assert.equal(run('otDepartureResult(day,-62)'),'ออกครบตามเวลาที่ควรออก');
+ assert(run("otDepartureResult({...day,target_last_out_at:'2026-09-25T09:48:00Z'},-62)").includes('ออกก่อนเวลาที่ควรออก 0 ชม. 10 นาที'));
+ assert(run("otDepartureResult({...day,target_last_out_at:'2026-09-25T12:12:00Z'},62)").includes('ออกหลังเวลาที่ควรออก 0 ชม. 10 นาที'));
+ assert.equal(run('otDepartureResult({...day,target_last_out_at:null},-62)'),'รอเวลาออกงานจริง');
+});
+test('OT departure uses nine hours plus or minus prior-day balance without waiting for today checkout',()=>{
+ const {run}=setup();run("var pair={mode:'USE_PRIOR',source_final:true,source_date:'2026-09-24',target_date:'2026-09-25',source_paid_minutes:602,source_required_minutes:540,source_first_in_at:'2026-09-24T02:30:00Z',target_first_in_at:'2026-09-25T02:00:00Z',settlement_state:'WAITING'}");
+ const html=run('overtimeDetails(pair)');assert(html.includes('1 ชม. 2 นาที'));assert(html.includes('18:30'));assert(html.includes('16:58'));assert(!html.includes('เวลาที่กำหนด'));assert(!html.includes('ยังสรุปไม่ได้'));
+ const makeup=run("overtimeDetails({...pair,mode:'MAKEUP_NEXT',source_paid_minutes:478})");assert(makeup.includes('19:02'));assert(makeup.includes('เวลาที่ต้องทำชด'));
+ assert(run("overtimeDetails({...pair,target_first_in_at:null})").includes('ยังไม่ลงเวลา'));
+ assert(run("expectedDeparture('2026-09-25T13:00:00Z',540,'2026-09-25')").includes('05:00 ('));
+});
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const vm=require('node:vm');
@@ -265,9 +279,9 @@ test('overview has six cards including off and current break without hiding zero
  const html=await run('dashboardView()');assert.equal((html.match(/class="stat-card"/g)||[]).length,6);assert(html.includes('วันหยุด</span><strong>3'));assert(html.includes('กำลังพัก</span><strong>4'));assert(html.includes('ยังไม่เข้างาน</span><strong>0'));
 });
 test('OT amount is prominent and incomplete attendance is not presented as zero',()=>{
- const {run}=setup();const html=run("overtimeDetails({settlement_state:'READY',minutes:45,available_minutes:45})");
+ const {run}=setup();const html=run("overtimeDetails({settlement_state:'READY',source_final:true,source_paid_minutes:585,source_required_minutes:540})");
  assert(html.includes('ชั่วโมงที่ใช้ได้'));assert(html.includes('<strong>0 ชม. 45 นาที</strong>'));
- assert(run("overtimeDetails({settlement_state:'WAITING',minutes:null})").includes('ยังสรุปไม่ได้'));
+ assert(run("overtimeDetails({settlement_state:'WAITING',minutes:null})").includes('วันก่อนหน้ายังลงเวลาไม่ครบ'));
 });
 test('HR approval sends immediately with empty review reason and requester reason is labelled',async()=>{
  const calls=[];const {run,node}=setup(async(url,options)=>{calls.push({action:new URL(url).searchParams.get('action'),body:JSON.parse(options.body)});return {ok:true,json:async()=>({ok:true})}});
