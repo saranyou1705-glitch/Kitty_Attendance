@@ -1,4 +1,7 @@
 const {test}=require('node:test');
+test('history route fixes operation and derives caller from verified LINE',async()=>{
+ const calls=[];const {handle}=setup('ADMIN',{requests:async(...args)=>{calls.push(args);return {ok:true}}});await handle('token','live_request_history',{kind:'correction',actor:'forged'});assert.equal(calls[0][0],'verified-line');assert.equal(calls[0][1],'history');
+});
 test('live OT verifies identity and never reaches legacy or trial RPC',async()=>{
  const calls=[];const {handle}=setup('EMPLOYEE',{overtime:async(...args)=>{calls.push(args);return {ok:true}}});
  for(const op of ['submit','balance','mine','queue','report','review','cancel'])await handle('token','live_ot_'+op,{actor:'forged',previewRole:'HR'});

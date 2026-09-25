@@ -1,4 +1,9 @@
 const {test}=require('node:test');
+test('manager history shows completed and legacy requests read-only with escaped reasons',async()=>{
+ const calls=[];const {run}=setup(async(url,opt)=>{calls.push([url,JSON.parse(opt.body)]);return {ok:true,json:async()=>({ok:true,rows:[{id:'a',kind:'overtime',status:'APPROVED',history_source:'live',employee:{name:'Office'},reason:'<script>',work_date:'2026-09-25'},{id:'b',kind:'correction',status:'CANCELLED',history_source:'before_production',reason:'Old',work_date:'2026-09-24'}]})}});
+ run("CONFIG.requestsLive=true;state.role='hr'");const html=await run("managerRequestHistory('correction')");
+ assert(html.includes('ประวัติคำขอ'));assert(html.includes('request-approved'));assert(html.includes('ยกเลิกแล้ว'));assert(html.includes('คำขอก่อนเปิดระบบจริง'));assert(html.includes('&lt;script&gt;'));assert(!html.includes('data-review-id'));assert(!html.includes('data-cancel-request'));assert.equal(calls[0][1].previewRole,'HR');assert(calls[0][0].includes('kitty-attendance-live?action=live_request_history'));
+});
 test('unsent OT form shows planned departure immediately for both modes',()=>{
  const {run}=setup();run("var planning={source_date:'2026-09-24',target_date:'2026-09-25',source_required_minutes:540,target_first_in_at:'2026-09-25T02:00:00Z'}");
  const use=run("priorOtSummary(planning,'USE_PRIOR',{daily:{last_out_at:'done',paid_work_hours:10+2/60}})");

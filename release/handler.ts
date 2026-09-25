@@ -13,7 +13,7 @@ export function createHandler(runtime:Runtime){
    return result;
   },
   requests:async(actor,operation,payload)=>{
-   const response=await fetcher(new URL('/rest/v1/rpc/kitty_live_request_v1',base),{method:'POST',headers:{apikey:runtime.serviceKey,Authorization:'Bearer '+runtime.serviceKey,'Content-Type':'application/json'},body:JSON.stringify({actor,operation,payload})});
+   const response=await fetcher(new URL(operation==='history'?'/rest/v1/rpc/kitty_live_history_v1':'/rest/v1/rpc/kitty_live_request_v1',base),{method:'POST',headers:{apikey:runtime.serviceKey,Authorization:'Bearer '+runtime.serviceKey,'Content-Type':'application/json'},body:JSON.stringify({actor,operation,payload})});
    const result=await response.json();
    if(!response.ok)throw Error(result.message||'REQUEST_SERVICE_ERROR');
    return result;

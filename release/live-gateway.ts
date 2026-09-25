@@ -16,7 +16,7 @@ export function createGateway(deps:Dependencies){
   if(Object.prototype.hasOwnProperty.call(roles,action)){
    return deps.access(profile.userId,roles[action],body);
   }
-  const requests:Record<string,string>={live_request_submit:'submit',live_request_review:'review',live_request_cancel:'cancel',live_request_mine:'mine',live_request_queue:'queue',live_request_report:'report'};
+const requests:Record<string,string>={live_request_history:'history',live_request_submit:'submit',live_request_review:'review',live_request_cancel:'cancel',live_request_mine:'mine',live_request_queue:'queue',live_request_report:'report'};
   if(Object.prototype.hasOwnProperty.call(requests,action)){
    if(!deps.requests)throw Error('ACTION_NOT_CONNECTED');
    return deps.requests(profile.userId,requests[action],body);
