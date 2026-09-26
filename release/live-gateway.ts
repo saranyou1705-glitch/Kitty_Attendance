@@ -48,6 +48,20 @@ const requests:Record<string,string>={live_request_history:'history',live_reques
    if(Object.keys(body).some(k=>!readFields[action].includes(k)))throw Error('INVALID_FIELDS');
    return deps.legacy(token,action,body);
   }
+  if(action==='self_weekend_wfh'){
+   if(Object.keys(body).some(k=>k!=='date'))throw Error('INVALID_FIELDS');
+   const current=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Bangkok',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+   if(body.date!==current)throw Error('WFH_TODAY_ONLY');
+   if(![0,6].includes(new Date(current+'T12:00:00+07:00').getUTCDay()))throw Error('WFH_WEEKEND_ONLY');
+   const boot=await deps.legacy(token,'bootstrap',{});
+   if(!boot?.ok||!boot.employee?.active)throw Error('ACTIVE_EMPLOYEE_REQUIRED');
+   const today=await deps.legacy(token,'today',{date:current});
+   if(!today?.ok||!Array.isArray(today.events))throw Error('SERVICE_UNAVAILABLE');
+   if(today.events.length)throw Error('WFH_HAS_ATTENDANCE_EVENTS');
+   if(today.schedule?.schedule_status==='WFH')return {ok:true,schedule:today.schedule,daily:today.daily};
+   if(today.schedule?.schedule_status&&!['WORK','OFF'].includes(today.schedule.schedule_status))throw Error('WFH_SCHEDULE_CONFLICT');
+   return deps.legacy(token,action,{date:current});
+  }
   if(action==='record'){
    const fields=['eventType','eventAt','workDate','latitude','longitude','gpsAccuracy'];
    if(Object.keys(body).some(k=>!fields.includes(k)))throw Error('INVALID_FIELDS');
@@ -56,6 +70,7 @@ const requests:Record<string,string>={live_request_history:'history',live_reques
    if(['STANDARD','STOCK_REFILL'].includes(boot.employee.attendance_mode)){
     const today=await deps.legacy(token,'today',{date:body.workDate});
     if(!today?.ok||!Array.isArray(today.events))throw Error('SERVICE_UNAVAILABLE');
+    if(today.schedule?.schedule_status==='WFH')throw Error('ACTION_NOT_AVAILABLE');
     const last=[...today.events].sort((a,b)=>String(a.event_at).localeCompare(String(b.event_at))).at(-1)?.event_type;
     const next=last===undefined?'IN':({IN:'BREAK_OUT',BREAK_OUT:'BREAK_IN',BREAK_IN:'OUT'} as Record<string,string>)[last];
     if(body.eventType!==next)throw Error('INVALID_STANDARD_SEQUENCE');

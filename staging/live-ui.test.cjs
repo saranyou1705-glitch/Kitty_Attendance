@@ -1,4 +1,14 @@
 const {test}=require('node:test');
+test('weekend WFH restores old button only before clocking and routes live',async()=>{
+ const calls=[];const {run}=setup(async(url,opt)=>{calls.push(url);return {ok:true,json:async()=>({ok:true})}});
+ run("dateKey=()=> '2026-09-26';state.boot={employee:{active:true}}");
+ assert(run("weekendWfhButton({events:[],schedule:{schedule_status:'OFF'}})").includes('data-weekend-wfh'));
+ assert.equal(run("weekendWfhButton({events:[{}]})"),'');
+ assert.equal(run("weekendWfhButton({events:[],schedule:{schedule_status:'WFH'}})"),'');
+ assert.equal(run("weekendWfhButton({events:[],schedule:{schedule_status:'SICK_LEAVE'}})"),'');
+ run("dateKey=()=> '2026-09-25'");assert.equal(run("weekendWfhButton({events:[]})"),'');
+ await run("api('self_weekend_wfh',{date:'2026-09-26'})");assert(calls[0].includes('kitty-attendance-live'));
+});
 test('manager history shows completed and legacy requests read-only with escaped reasons',async()=>{
  const calls=[];const {run}=setup(async(url,opt)=>{calls.push([url,JSON.parse(opt.body)]);return {ok:true,json:async()=>({ok:true,rows:[{id:'a',kind:'overtime',status:'APPROVED',history_source:'live',employee:{name:'Office'},reason:'<script>',work_date:'2026-09-25'},{id:'b',kind:'correction',status:'CANCELLED',history_source:'before_production',reason:'Old',work_date:'2026-09-24'}]})}});
  run("CONFIG.requestsLive=true;state.role='hr'");const html=await run("managerRequestHistory('correction')");

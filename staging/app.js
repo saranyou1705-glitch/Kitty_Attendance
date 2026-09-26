@@ -37,7 +37,7 @@ function disabled(label){const icon={'เข้างาน':'clock','ออก�
 const clockTypes={'เข้างาน':'IN','ออกพัก':'BREAK_OUT','กลับจากพัก':'BREAK_IN','ออกงาน':'OUT','เริ่มวันทำงาน':'DAY_IN','เข้าสาขา':'BRANCH_IN','ออกสาขา':'BRANCH_OUT','จบวันทำงาน':'DAY_OUT'};
 function clockButton(label,data){
  const event=clockTypes[label],allowed=window.KittyClock?.allowedActions(data.employee?.attendance_mode||state.boot?.employee?.attendance_mode,data.events||[])||[];
- const enabled=data.employee?.active===true&&allowed.includes(event)&&!state.clockBusy&&!state.clockRecorder?.uncertain;
+ const enabled=data.employee?.active===true&&data.schedule?.schedule_status!=='WFH'&&allowed.includes(event)&&!state.clockBusy&&!state.clockRecorder?.uncertain;
  const icon={IN:'clock',BREAK_OUT:'coffee',BREAK_IN:'coffee',OUT:'logout',DAY_IN:'clock',DAY_OUT:'logout',BRANCH_IN:'offices',BRANCH_OUT:'logout'}[event];
  return `<button class="btn ${enabled?'primary':'secondary'}" data-clock-event="${event}" ${enabled?'':'disabled'}>${uiIcon(icon||'clock')}<span>${label}</span></button>`;
 }
@@ -68,7 +68,7 @@ async function api(action,payload={}){
  const token=window.liff?.getAccessToken();if(!token)throw new Error('MISSING_LINE_TOKEN');
  const control=new AbortController(),timer=setTimeout(()=>control.abort(),20000);
  const request={...payload};if(state.role==='hr'&&action.startsWith('admin_')&&!action.startsWith('admin_hr_')||state.role==='hr'&&(action==='staging_schedule'||(action.startsWith('staging_request_')||action.startsWith('live_request_')||(action.startsWith('staging_ot_')||action.startsWith('live_ot_'))||action.startsWith('staging_people_'))))request.previewRole='HR';
- try{const r=await fetch(`${(['record','today','employee_month','admin_update_event'].includes(action)||action.startsWith('live_request_')||action.startsWith('live_ot_')||(CONFIG.requestsLive&&(action==='bootstrap'||action==='hr_register'||action.startsWith('admin_hr_'))))?CONFIG.liveApi:CONFIG.api}?action=${encodeURIComponent(action)}`,{method:'POST',cache:'no-store',headers:{'Content-Type':'application/json','x-line-access-token':token},body:JSON.stringify(request),signal:control.signal});let data;try{data=await r.json()}catch{throw new Error(`บริการข้อมูลตอบกลับไม่สมบูรณ์ (${r.status})`)}if(!r.ok||!data.ok)throw new Error(data.message||data.error||`HTTP ${r.status}`);return data}finally{clearTimeout(timer)}
+ try{const r=await fetch(`${(['record','today','employee_month','admin_update_event','self_weekend_wfh'].includes(action)||action.startsWith('live_request_')||action.startsWith('live_ot_')||(CONFIG.requestsLive&&(action==='bootstrap'||action==='hr_register'||action.startsWith('admin_hr_'))))?CONFIG.liveApi:CONFIG.api}?action=${encodeURIComponent(action)}`,{method:'POST',cache:'no-store',headers:{'Content-Type':'application/json','x-line-access-token':token},body:JSON.stringify(request),signal:control.signal});let data;try{data=await r.json()}catch{throw new Error(`บริการข้อมูลตอบกลับไม่สมบูรณ์ (${r.status})`)}if(!r.ok||!data.ok)throw new Error(data.message||data.error||`HTTP ${r.status}`);return data}finally{clearTimeout(timer)}
 }
 function activeMenu(){if(state.connected&&state.boot&&!state.boot?.employee&&!state.boot?.isAdmin)return [];return state.personal?menus.employee:menus[state.role]}
 function loginRedirect(){const url=new URL('https://saranyou1705-glitch.github.io/Kitty_Attendance_Staging/');if(new URLSearchParams(location.search).get('view')==='hr')url.searchParams.set('view','hr');if(new URLSearchParams(location.search).get('register')==='hr')url.searchParams.set('register','hr');return url.href}
@@ -144,12 +144,25 @@ async function ownOtStatus(date,info={},daily){
  if(['MULTI_BRANCH','DRIVER'].includes(state.boot?.employee?.attendance_mode))return '';
  try{const data=await api('staging_ot_mine');info.departure=window.KittyIndividualReport.departure({...daily,work_date:date,requests:data.rows||[]}).label;const rows=(data.rows||[]).filter(r=>r.kind==='overtime'&&[r.source_date,r.target_date].includes(date)&&['APPROVED','PENDING'].includes(r.status));const approved=rows.filter(r=>r.status==='APPROVED');if(!rows.length)return '';if(!approved.length)return ' · มีคำขอ OT รออนุมัติ';if(!CONFIG.requestsLive)return ' · มีคำขอ OT ทดลองอนุมัติแล้ว';const settled=approved.filter(r=>r.settlement_state==='READY'),minutes=settled.reduce((sum,r)=>sum+Number(r.minutes||0),0);return ' · '+(minutes>0?'ใช้ OT '+hours(minutes/60):approved.some(r=>r.settlement_state!=='READY')?'OT อนุมัติแล้ว · รอสรุปเวลาทั้งสองวัน':'OT อนุมัติแล้ว · ไม่มีเวลาที่ต้องชด')}catch{info.departure='ตรวจเวลาออกไม่สำเร็จ';return ' · ตรวจสถานะคำขอ OT ไม่สำเร็จ'}
 }
+function weekendWfhButton(data){
+ const weekend=[0,6].includes(new Date(dateKey()+'T12:00:00+07:00').getUTCDay());
+ const status=data.schedule?.schedule_status;
+ if(!weekend||!state.boot?.employee?.active||(data.events||[]).length||status==='WFH'||(status&&!['WORK','OFF'].includes(status)))return '';
+ return '<button class="btn secondary" data-weekend-wfh>บันทึกวันนี้เป็น WFH</button>';
+}
+async function submitWeekendWfh(button){
+ if(!confirm('ยืนยันบันทึกวันนี้เป็น WFH 9 ชั่วโมง?'))return;
+ button.disabled=true;
+ try{await api('self_weekend_wfh',{date:dateKey()});state.clockNotice='บันทึกวันนี้เป็น WFH แล้ว';await render()}
+ catch(e){toast(({WFH_TODAY_ONLY:'บันทึกได้เฉพาะวันนี้',WFH_WEEKEND_ONLY:'ใช้ได้เฉพาะวันเสาร์และอาทิตย์',WFH_HAS_ATTENDANCE_EVENTS:'วันนี้มีการลงเวลาแล้ว กรุณาให้แอดมินตรวจสอบ',WFH_SCHEDULE_CONFLICT:'วันนี้มีตารางลาหรือรายการอื่นอยู่ กรุณาให้ HR ตรวจสอบ'})[e.message]||workflowError(e))}
+ finally{button.disabled=false}
+}
 async function clockView(){
  if(!state.boot.employee)return state.boot.isAdmin?panel(empty('บัญชีนี้ยังไม่ผูกกับพนักงาน')):signupView();
  const data=await api('today',{date:dateKey()}),daily=data.daily,otInfo={},otStatus=await ownOtStatus(dateKey(),otInfo,daily);
  const latest=(data.events||[]).slice().sort((a,b)=>String(a.event_at).localeCompare(String(b.event_at))).at(-1);
  const status=latest?({IN:'เข้างานแล้ว',CHECK_IN:'เข้างานแล้ว',BREAK_OUT:'กำลังพัก',BREAK_IN:'กลับจากพักแล้ว',DAY_IN:'เริ่มวันทำงานแล้ว',BRANCH_IN:'อยู่ที่สาขา',BRANCH_OUT:'ออกจากสาขาแล้ว',DAY_OUT:'จบวันทำงานแล้ว',OUT:'ออกงานแล้ว',CHECK_OUT:'ออกงานแล้ว'}[latest.event_type]||'มีการลงเวลาแล้ว'):'ยังไม่ลงเวลา';
- return `<div class="view-heading"><div><p class="page-context">${esc(person(state.boot.employee))}</p><h1>วันทำงานของฉัน</h1></div></div>${state.clockNotice?`<p class="live-clock-notice" role="status">${esc(state.clockNotice)}</p>`:''}${state.clockRecorder?.uncertain?'<button class="btn secondary" data-clock-refresh>ตรวจผลบันทึกที่ยังไม่ยืนยัน</button>':''}<div class="personal-clock-layout"><section class="panel clock-card"><p data-clock-date></p><div class="big-time" data-clock></div><span class="attendance-tag">${status}${latest?' · '+time(latest.event_at):''}</span>${['MULTI_BRANCH','DRIVER'].includes(state.boot.employee.attendance_mode)?'':`<div class="clock-actions">${clockButton('เข้างาน',data)}${clockButton('ออกพัก',data)}${clockButton('กลับจากพัก',data)}${clockButton('ออกงาน',data)}</div>`}</section><section class="panel clock-summary"><h2>เวลาของฉันวันนี้</h2>${[['เข้างาน',daily?.first_in_at],['ออกพัก',daily?.break_out_at],['กลับจากพัก',daily?.break_in_at],['ออกงาน',daily?.last_out_at]].map(([label,value])=>`<div class="time-line"><span>${label}</span><strong>${time(value)}</strong></div>`).join('')}<div class="time-line"><span>ทำงานสุทธิ</span><strong>${hours(daily?.paid_work_hours)}</strong></div><div class="time-line"><span>เวลาที่ควรออก</span><strong>${esc(otInfo.departure||'—')}</strong></div><div class="time-line"><span>สรุปวันนี้</span><strong>${esc(dailyResult(daily,data.schedule,dateKey())+otStatus)}</strong></div></section></div>${occupationalView(state.boot.employee,data)}`;
+ return `<div class="view-heading"><div><p class="page-context">${esc(person(state.boot.employee))}</p><h1>วันทำงานของฉัน</h1></div></div>${state.clockNotice?`<p class="live-clock-notice" role="status">${esc(state.clockNotice)}</p>`:''}${state.clockRecorder?.uncertain?'<button class="btn secondary" data-clock-refresh>ตรวจผลบันทึกที่ยังไม่ยืนยัน</button>':''}<div class="personal-clock-layout"><section class="panel clock-card"><p data-clock-date></p><div class="big-time" data-clock></div><span class="attendance-tag">${status}${latest?' · '+time(latest.event_at):''}</span>${weekendWfhButton(data)}${['MULTI_BRANCH','DRIVER'].includes(state.boot.employee.attendance_mode)?'':`<div class="clock-actions">${clockButton('เข้างาน',data)}${clockButton('ออกพัก',data)}${clockButton('กลับจากพัก',data)}${clockButton('ออกงาน',data)}</div>`}</section><section class="panel clock-summary"><h2>เวลาของฉันวันนี้</h2>${[['เข้างาน',daily?.first_in_at],['ออกพัก',daily?.break_out_at],['กลับจากพัก',daily?.break_in_at],['ออกงาน',daily?.last_out_at]].map(([label,value])=>`<div class="time-line"><span>${label}</span><strong>${time(value)}</strong></div>`).join('')}<div class="time-line"><span>ทำงานสุทธิ</span><strong>${hours(daily?.paid_work_hours)}</strong></div><div class="time-line"><span>เวลาที่ควรออก</span><strong>${esc(otInfo.departure||'—')}</strong></div><div class="time-line"><span>สรุปวันนี้</span><strong>${esc(dailyResult(daily,data.schedule,dateKey())+otStatus)}</strong></div></section></div>${occupationalView(state.boot.employee,data)}`;
 }
 async function dashboardView(){
  const [d,requests]=await Promise.all([api('admin_daily',{date:state.date}),requestQueue()]);
@@ -584,6 +597,7 @@ document.addEventListener('click',e=>{
  if(b.dataset.hrRefresh!==undefined){init();return}
  if(b.id==='selfProfileButton'){showSelfProfile();return}
  if(b.dataset.clockEvent){submitClock(b.dataset.clockEvent);return}
+ if(b.dataset.weekendWfh!==undefined){submitWeekendWfh(b);return}
  if(b.dataset.clockRefresh!==undefined){refreshClock();return}
  if(b.dataset.addPersonnel!==undefined){personnelEditor();return}
  if(b.dataset.editPersonnel){personnelEditor(personnelTarget(b.dataset.editPersonnel));return}

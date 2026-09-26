@@ -30,7 +30,7 @@ export function createHandler(runtime:Runtime){
    return result;
   },
   legacy:async(token,action,payload)=>{
-   if(action==='record'&&!runtime.clockEnabled)throw Error('PRODUCTION_CLOCK_NOT_ENABLED');
+   if(['record','self_weekend_wfh'].includes(action)&&!runtime.clockEnabled)throw Error('PRODUCTION_CLOCK_NOT_ENABLED');
    const url=new URL(legacyURL);url.searchParams.set('action',action);
    const response=await fetcher(url,{method:'POST',headers:{'Content-Type':'application/json','x-line-access-token':token},body:JSON.stringify(payload)});
    const result=await response.json();

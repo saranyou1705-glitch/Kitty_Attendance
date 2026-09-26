@@ -1,4 +1,21 @@
 const {test}=require('node:test');
+test('weekend WFH uses authenticated own employee and rejects forged fields or existing clocks',async()=>{
+ const RealDate=Date;
+ ctx.Date=class extends RealDate{constructor(...a){super(...(a.length?a:['2026-09-26T03:00:00Z']))}};
+ try{
+  const writes=[];let events=[];
+  const {handle}=setup('EMPLOYEE',{legacy:async(token,action,body)=>{
+   if(action==='bootstrap')return {ok:true,employee:{active:true}};
+   if(action==='today')return {ok:true,events,schedule:{schedule_status:'OFF'}};
+   writes.push([action,body]);return {ok:true};
+  }});
+  await handle('token','self_weekend_wfh',{date:'2026-09-26'});assert.equal(writes.length,1);
+  await assert.rejects(handle('token','self_weekend_wfh',{date:'2026-09-25'}),/WFH_TODAY_ONLY/);
+  await assert.rejects(handle('token','self_weekend_wfh',{date:'2026-09-26',employeeId:'other'}),/INVALID_FIELDS/);
+  events=[{event_type:'IN'}];await assert.rejects(handle('token','self_weekend_wfh',{date:'2026-09-26'}),/WFH_HAS_ATTENDANCE_EVENTS/);
+  assert.equal(writes.length,1);
+ }finally{ctx.Date=RealDate}
+});
 test('history route fixes operation and derives caller from verified LINE',async()=>{
  const calls=[];const {handle}=setup('ADMIN',{requests:async(...args)=>{calls.push(args);return {ok:true}}});await handle('token','live_request_history',{kind:'correction',actor:'forged'});assert.equal(calls[0][0],'verified-line');assert.equal(calls[0][1],'history');
 });
