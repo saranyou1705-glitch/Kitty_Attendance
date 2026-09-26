@@ -212,6 +212,7 @@ input::-webkit-date-and-time-value{text-align:left;min-height:1.5em}
 .ot-prior-summary strong{color:#9b315f;white-space:nowrap}
 .time-line strong{min-width:0;overflow-wrap:anywhere;text-align:right}
 /* Manager request queues/history share a compact, semantic table at every size. */
+.clock-card > [data-weekend-wfh]{display:flex;align-items:center;justify-content:center;width:fit-content;max-width:100%;min-height:44px;margin:16px auto 0;white-space:normal;text-align:center}
 .request-table-scroll{max-width:100%;min-width:0;overflow-x:auto;overscroll-behavior-x:contain;border:1px solid var(--line);border-radius:14px;margin:14px 0;-webkit-overflow-scrolling:touch}
 .request-table{width:100%;min-width:900px;border-collapse:collapse;font-size:14px;line-height:1.5;text-align:left}
 .request-table th{background:var(--soft);color:var(--muted);font-weight:600;white-space:nowrap}
