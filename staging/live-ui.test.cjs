@@ -1,4 +1,15 @@
 const {test}=require('node:test');
+test('manager requests use compact tables preserving read buttons, reasons and history statuses',()=>{
+ const {run}=setup();
+ run("var rows=[{id:'one',kind:'correction',status:'PENDING',employee:{employee_code:'HO001',name:'Test'},work_date:'2026-09-26',requested_event_type:'OUT',reason:'<img src=x>',unread:true},{id:'two',kind:'leave',status:'APPROVED',employee:{name:'Other'},reason:'Long reason',unread:false}]");
+ const html=run("managerRequestsTable(rows)");
+ assert(html.includes('<table class="request-table">'));assert.equal((html.match(/<tr>/g)||[]).length,3);
+ assert(html.includes('scope="col"'));assert(html.includes('request-unread'));assert(html.includes('data-request-key='));
+ assert(html.includes('request-read-label'));assert(html.includes('อ่านแล้ว'));assert(html.includes('&lt;img src=x&gt;'));assert(!html.includes('<article'));
+ const history=run("managerRequestsTable(rows,true)");
+ assert(history.includes('request-approved'));assert(history.includes('อนุมัติแล้ว'));assert(!history.includes('data-request-key='));
+ assert(history.includes('พิจารณาเมื่อ'));assert(!history.includes('data-review-id'));
+});
 test('weekend WFH restores old button only before clocking and routes live',async()=>{
  const calls=[];const {run}=setup(async(url,opt)=>{calls.push(url);return {ok:true,json:async()=>({ok:true})}});
  run("dateKey=()=> '2026-09-26';state.boot={employee:{active:true}}");
