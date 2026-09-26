@@ -211,3 +211,19 @@ input::-webkit-date-and-time-value{text-align:left;min-height:1.5em}
 .ot-prior-summary{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:8px 16px;margin:8px 0 16px;line-height:1.6}
 .ot-prior-summary strong{color:#9b315f;white-space:nowrap}
 .time-line strong{min-width:0;overflow-wrap:anywhere;text-align:right}
+/* Manager request queues/history share a compact, semantic table at every size. */
+.request-table-scroll{max-width:100%;min-width:0;overflow-x:auto;overscroll-behavior-x:contain;border:1px solid var(--line);border-radius:14px;margin:14px 0;-webkit-overflow-scrolling:touch}
+.request-table{width:100%;min-width:900px;border-collapse:collapse;font-size:14px;line-height:1.5;text-align:left}
+.request-table th{background:var(--soft);color:var(--muted);font-weight:600;white-space:nowrap}
+.request-table th,.request-table td{padding:12px 14px;border-bottom:1px solid var(--line);vertical-align:middle}
+.request-table tr:last-child td{border-bottom:0}.request-table tbody tr:hover{background:#fcf7fa}
+.request-table .request-person{font-weight:600;min-width:145px}
+.request-table .request-date{white-space:nowrap;font-size:13px}
+.request-table .request-detail{min-width:180px;max-width:250px;overflow-wrap:anywhere}
+.request-table .request-reason{min-width:190px;max-width:300px;overflow-wrap:anywhere}
+.request-table small{display:block;margin-top:4px;color:var(--muted)}
+.request-table .request-status{white-space:nowrap}
+.request-table .btn[data-request-key]{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:40px;width:132px;margin:0;padding:8px 12px;font-size:13px;line-height:1.5;white-space:nowrap}
+.request-table .request-unread::before{position:static;transform:none}
+.dashboard-requests,.panel:has(.request-table-scroll){min-width:0}
+@media(max-width:720px){.request-table th,.request-table td{padding:10px 12px}.request-table .btn[data-request-key]{min-height:44px}.request-table-scroll{border-radius:12px}}

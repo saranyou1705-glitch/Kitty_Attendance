@@ -428,10 +428,19 @@ function openRequest(key){
  navigation();
  document.querySelectorAll('[data-request-key]').forEach(button=>{if(button.dataset.requestKey===key){button.classList.remove('request-unread');button.querySelector('.request-read-label').textContent='อ่านแล้ว'}});
 }
+function managerRequestsTable(rows,history=false){
+ const stamp=value=>value?esc(dateKey(new Date(value)).split('-').reverse().join('/')+' '+time(value)):'—';
+ const headers=['พนักงาน','วันที่','คำขอ / รายละเอียด','เหตุผล','สถานะ',history?'พิจารณาเมื่อ':'ส่งเมื่อ',...(history?[]:['จัดการ'])];
+ return '<div class="request-table-scroll" role="region" aria-label="'+(history?'ประวัติคำขอ':'คำขอรออนุมัติ')+'" tabindex="0"><table class="request-table"><thead><tr>'+headers.map(h=>'<th scope="col">'+h+'</th>').join('')+'</tr></thead><tbody>'+rows.map(r=>{
+  const read=r.unread===false||readRequestIds().has(requestKey(r));
+  const status=history?({APPROVED:'อนุมัติแล้ว',REJECTED:'ปฏิเสธแล้ว',CANCELLED:'ยกเลิกแล้ว',PENDING:'ยังไม่พิจารณา'}[r.status]||userLabel(r.status)):'รออนุมัติ';
+  return '<tr><td class="request-person">'+esc(person(r.employee))+'</td><td class="request-date">'+esc(r.leave_date||r.work_date||'—')+'</td><td class="request-detail">'+(r.kind==='registration'?'สมัครพนักงานใหม่':requestDescription(r))+'</td><td class="request-reason">'+esc(r.reason||'ไม่ระบุเหตุผล')+(r.review_reason?'<small>หมายเหตุ: '+esc(r.review_reason)+'</small>':'')+'</td><td><span class="request-status '+(r.status==='APPROVED'?'request-approved':'')+'">'+esc(status)+'</span></td><td class="request-date">'+stamp(history?r.reviewed_at:r.created_at)+'</td>'+(history?'':'<td>'+(r.id?'<button class="btn secondary '+(read?'':'request-unread')+'" data-request-key="'+esc(requestKey(r))+'"><span class="request-read-label">'+(read?'อ่านแล้ว':'เปิดอ่านคำขอ')+'</span></button>':'—')+'</td>')+'</tr>';
+ }).join('')+'</tbody></table></div>';
+}
 function requestList(data,limit=1000){
  const rows=data.rows||[],warnings=data.warnings||[];
  return warnings.map(w=>`<p class="report-warning">${esc(w)}</p>`).join('')+
- (rows.length?rows.slice(0,limit).map(r=>`<article class="request-item"><div><strong>${esc(person(r.employee))}</strong><span class="attendance-tag">รออนุมัติ</span></div><p>${r.kind==='registration'?'สมัครพนักงานใหม่':r.kind==='leave'?esc(leaveDescription(r)):r.kind==='overtime'?'ใช้โอที':'ขอแก้เวลา'} · ${esc(r.leave_date||r.work_date||'—')}</p><p class="request-reason">เหตุผล : ${esc(r.reason||'ไม่ระบุเหตุผล')}</p><small>ส่ง ${r.created_at?esc(displayDate(dateKey(new Date(r.created_at)))+' '+time(r.created_at)):'—'}</small>${r.id?`<button class="btn secondary ${(r.unread===false||readRequestIds().has(requestKey(r)))?'':'request-unread'}" data-request-key="${esc(requestKey(r))}"><span class="request-read-label">${(r.unread===false||readRequestIds().has(requestKey(r)))?'อ่านแล้ว':'เปิดอ่านคำขอ'}</span></button>`:''}</article>`).join(''):warnings.length?'':empty('ไม่มีคำขอรออนุมัติ'))+
+ (rows.length?managerRequestsTable(rows.slice(0,limit)):warnings.length?'':empty('ไม่มีคำขอรออนุมัติ'))+
  (rows.length>limit?`<p class="panel-sub">แสดง ${limit} จาก ${rows.length} รายการที่โหลด</p>`:'');
 }
 async function requestsView(kind){
@@ -442,7 +451,7 @@ async function managerRequestHistory(kind){
  try{
   const data=await api('live_request_history',{kind});
   const rows=data.rows||[],live=rows.filter(r=>r.history_source==='live'),older=rows.filter(r=>r.history_source==='before_production');
-  const cards=items=>items.map(r=>`<article class="request-item"><div><strong>${esc(person(r.employee))}</strong><span class="request-status ${r.status==='APPROVED'?'request-approved':''}">${esc(({APPROVED:'อนุมัติแล้ว',REJECTED:'ปฏิเสธแล้ว',CANCELLED:'ยกเลิกแล้ว',PENDING:'ยังไม่พิจารณา'})[r.status]||userLabel(r.status))}</span></div><p>${requestDescription(r)}</p><p>วันที่ ${esc(r.work_date||r.leave_date||'—')}</p><p class="request-reason">เหตุผล : ${esc(r.reason||'ไม่ระบุเหตุผล')}</p>${r.review_reason?`<p>หมายเหตุ: ${esc(r.review_reason)}</p>`:''}${r.reviewed_at?`<small>พิจารณา ${esc(displayDate(dateKey(new Date(r.reviewed_at))))} ${esc(time(r.reviewed_at))}</small>`:''}</article>`).join('');
+  const cards=items=>managerRequestsTable(items,true);
   return panel('<h2>ประวัติคำขอ</h2>'+(live.length?cards(live):empty('ยังไม่มีคำขอที่พิจารณาแล้ว'))+(older.length?`<details class="event-details"><summary>คำขอก่อนเปิดระบบจริง (${older.length})</summary><p>ประวัติเดิมสำหรับดูย้อนหลัง ไม่มีการนำมาปรับยอดเวลาจริงซ้ำ</p>${cards(older)}</details>`:'')+(rows.length>=1000?'<p>แสดงประวัติล่าสุด 1,000 รายการ</p>':''));
  }catch(error){return panel('<h2>ประวัติคำขอ</h2><p class="report-warning">โหลดประวัติไม่สำเร็จ: '+esc(workflowError(error))+'</p>')}
 }
