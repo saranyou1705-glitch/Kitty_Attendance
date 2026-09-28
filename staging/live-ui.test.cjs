@@ -177,7 +177,7 @@ test('table closes its scroll container before subsequent page controls',()=>{
 });
 test('Admin menus retain desktop and mobile access to all management features',()=>{
  const {run,node}=setup();run("state.role='admin';state.boot={isAdmin:true,adminRole:'ADMIN'};navigation()");
- const desktop=node('#desktopNav').innerHTML;assert(desktop.includes('จัดการ'));assert.equal((desktop.match(/data-page=/g)||[]).length,7);for(const name of ['LINE Report','Audit Log','แก้ไขเวลา','ตั้งค่าระบบ'])assert(run('managementView()').includes(name));assert(node('#bottomNav').innerHTML.includes('จัดการ'));
+ const desktop=node('#desktopNav').innerHTML;assert(desktop.includes('จัดการ'));assert(desktop.includes('สิทธิ์ HR'));assert.equal((desktop.match(/data-page=/g)||[]).length,8);for(const name of ['LINE Report','Audit Log','แก้ไขเวลา','ตั้งค่าระบบ'])assert(run('managementView()').includes(name));assert(node('#bottomNav').innerHTML.includes('จัดการ'));
 });
 test('report defaults to active employees and all-status never widens HR exclusions',()=>{
  const {run}=setup();run("var candidates=[{id:'on',active:true,name:'Office'},{id:'off',active:false,name:'Former'},{id:'private',active:true,name:'Shane'},{id:'unknown',name:'Unknown'}]");
