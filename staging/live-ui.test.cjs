@@ -150,7 +150,7 @@ test('production requests route separately and isolate old trial drafts',async()
 function setup(fetcher){
  const nodes=new Map(),listeners={},storage=new Map();
  const node=key=>{if(!nodes.has(key))nodes.set(key,{innerHTML:'',textContent:'',hidden:false,value:'',classList:{add(){},remove(){},toggle(){}},showModal(){}});return nodes.get(key)};
- const context=vm.createContext({console,Intl,Date,Number,String,Set,Map,JSON,Promise,AbortController,FormData,crypto:require('node:crypto').webcrypto,setTimeout,clearTimeout,setInterval(){},window:{KittyClock:require('./attendance-client.js'),KittyIndividualReport:require('./individual-report.js'),liff:{getAccessToken:()=> 'test-token'}},document:{querySelector:node,querySelectorAll:()=>[],addEventListener:(key,fn)=>listeners[key]=fn},sessionStorage:{getItem:k=>storage.get(k),setItem:(k,v)=>storage.set(k,v)},fetch:fetcher||(async()=>{throw Error('Failed to fetch')})});
+ const context=vm.createContext({console,URL,URLSearchParams,Intl,Date,Number,String,Set,Map,JSON,Promise,AbortController,FormData,crypto:require('node:crypto').webcrypto,setTimeout,clearTimeout,setInterval(){},window:{KittyClock:require('./attendance-client.js'),KittyIndividualReport:require('./individual-report.js'),liff:{getAccessToken:()=> 'test-token'}},document:{querySelector:node,querySelectorAll:()=>[],addEventListener:(key,fn)=>listeners[key]=fn},sessionStorage:{getItem:k=>storage.get(k),setItem:(k,v)=>storage.set(k,v)},fetch:fetcher||(async()=>{throw Error('Failed to fetch')})});
  vm.runInContext(source,context);return {run:code=>vm.runInContext(code,context),node,listeners};
 }
 test('Bangkok clock converts timestamps and no fixed demo clock remains',()=>{
