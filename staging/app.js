@@ -71,7 +71,7 @@ async function api(action,payload={}){
  try{const r=await fetch(`${(['record','today','employee_month','admin_update_event','self_weekend_wfh'].includes(action)||action.startsWith('live_request_')||action.startsWith('live_ot_')||(CONFIG.requestsLive&&(action==='bootstrap'||action==='hr_register'||action.startsWith('admin_hr_'))))?CONFIG.liveApi:CONFIG.api}?action=${encodeURIComponent(action)}`,{method:'POST',cache:'no-store',headers:{'Content-Type':'application/json','x-line-access-token':token},body:JSON.stringify(request),signal:control.signal});let data;try{data=await r.json()}catch{throw new Error(`บริการข้อมูลตอบกลับไม่สมบูรณ์ (${r.status})`)}if(!r.ok||!data.ok)throw new Error(data.message||data.error||`HTTP ${r.status}`);return data}finally{clearTimeout(timer)}
 }
 function activeMenu(){if(state.connected&&state.boot&&!state.boot?.employee&&!state.boot?.isAdmin)return [];return state.personal?menus.employee:menus[state.role]}
-function loginRedirect(){const url=new URL('https://saranyou1705-glitch.github.io/Kitty_Attendance_Staging/');if(new URLSearchParams(location.search).get('view')==='hr')url.searchParams.set('view','hr');if(new URLSearchParams(location.search).get('register')==='hr')url.searchParams.set('register','hr');return url.href}
+function loginRedirect(){const url=new URL('https://saranyou1705-glitch.github.io/Kitty_Attendance_Staging/');if(new URLSearchParams(location.search).get('view')==='hr')url.searchParams.set('view','hr');if(hrEntryRequested())url.searchParams.set('register','hr');return url.href}
 function navigation(){
  const legacy=document.querySelector('.legacy-entry');if(legacy)legacy.hidden=state.role!=='admin'||state.personal;
  $('#environmentStatus').hidden=state.connected;
@@ -79,7 +79,7 @@ function navigation(){
  $('#pageHeader').hidden=state.connected&&['dashboard','clock'].includes(state.page);
  const list=activeMenu();const render=items=>items.map(([id,icon,label])=>`<button class="nav-item ${state.page===id?'active':''}" aria-current="${state.page===id?'page':'false'}" data-page="${id}"><span class="nav-symbol">${uiIcon(id)}${requestBadge(id)}</span><span>${label}</span></button>`).join('');
  const managementMenu=['dashboard','employees','schedule','clock-approvals','leave','reports'].map(id=>list.find(x=>x[0]===id)).filter(Boolean);
- const visible=state.personal||state.role==='employee'?list:state.role==='admin'?[...managementMenu,['more','•••','จัดการ']]:managementMenu;
+ const visible=state.personal||state.role==='employee'?list:state.role==='admin'?[...managementMenu,['settings','⚙','สิทธิ์ HR'],['more','•••','จัดการ']]:managementMenu;
  $('#desktopNav').innerHTML=render(visible);
  $('#bottomNav').innerHTML=render(visible);
  $('#bottomNav').classList.toggle('management-bottom',!state.personal&&state.role!=='employee');
@@ -89,7 +89,15 @@ function navigation(){
  $('#consoleName').textContent=state.personal||state.role==='employee'?'My Attendance':state.role==='admin'?'Admin Console':'HR · Head Office';
  $('#pageTitle').textContent=(state.page==='clock'?'วันทำงานของฉัน':list.find(x=>x[0]===state.page)?.[2])||'จัดการ';
 }
+function hrEntryRequested(){
+ const params=new URLSearchParams(location.search);
+ const nested=new URLSearchParams(params.get('liff.state')||'');
+ const requested=params.get('register')==='hr'||nested.get('register')==='hr';
+ try{if(requested)sessionStorage.setItem('kitty-hr-entry','1');return requested||sessionStorage.getItem('kitty-hr-entry')==='1'}catch{return requested}
+}
+function hrEntryPage(role){return role==='admin'?'settings':role==='hr'?'dashboard':'hr-register'}
 async function init(){
+ const enterHr=hrEntryRequested();
  if(location.protocol==='file:'){$('#content').innerHTML=panel('<h2>กรุณาเปิดผ่านเว็บไซต์</h2><p>LINE ไม่รองรับการเข้าสู่ระบบจากไฟล์ในเครื่อง</p><a class="btn primary" href="https://saranyou1705-glitch.github.io/Kitty_Attendance_Staging/">เปิด Kitty Attendance</a>');return}
  state.connected=false;state.boot=null;state.directory=null;renderVersion++;$('#content').innerHTML=loginLoading();$('#environmentStatus').textContent='กำลังเชื่อมต่อ';
  try{
@@ -99,8 +107,9 @@ async function init(){
   const started=Date.now();const boot=await api('bootstrap');
   if(boot.serverTime){const server=Date.parse(boot.serverTime);if(Number.isFinite(server))offset=server-(started+Date.now())/2}
   state.boot=boot;state.connected=true;state.role=String(boot.adminRole).toUpperCase()==='HR'?'hr':boot.isAdmin?'admin':'employee';state.personal=false;
-  if(state.role==='admin'&&new URLSearchParams(location.search).get('view')==='hr')state.role='hr';
-  state.date=dateKey();state.month=state.date.slice(0,7);state.selected=state.date;state.page=CONFIG.requestsLive&&state.role==='employee'&&new URLSearchParams(location.search).get('register')==='hr'?'hr-register':state.role==='employee'?'clock':'dashboard';
+  if(!enterHr&&state.role==='admin'&&new URLSearchParams(location.search).get('view')==='hr')state.role='hr';
+  state.date=dateKey();state.month=state.date.slice(0,7);state.selected=state.date;state.page=CONFIG.requestsLive&&enterHr?hrEntryPage(state.role):state.role==='employee'?'clock':'dashboard';
+  try{sessionStorage.removeItem('kitty-hr-entry')}catch{}
   $('#environmentStatus').textContent=CONFIG.requestsLive?'ลงเวลา ลา แก้เวลา และ OT จริง':'ลงเวลาจริง · คำขอและการจัดการยังเป็นชุดทดลอง';state.loginLoading=true;try{await render()}finally{state.loginLoading=false}
  }catch(e){$('#environmentStatus').textContent='ยังไม่เชื่อมต่อข้อมูล';$('#content').innerHTML=panel(`<h2>โหลดข้อมูลไม่ได้</h2><p>${esc(errorMessage(e))}</p><button class="btn primary" data-action="reconnect">ลองเชื่อมต่อใหม่</button><button class="btn secondary" data-action="login">เข้าสู่ระบบ LINE ใหม่</button>`)}
 }
@@ -332,7 +341,7 @@ function managementView(){return `<div class="management-grid">${state.role==='a
 async function hrAccessView(){
  if(!CONFIG.requestsLive||state.role!=='admin')return unavailableView();
  const data=await api('admin_hr_list');state.hrRegistrations=data.registrations||[];
- return window.KittyHRAccess.management(state.hrRegistrations)+panel('<a class="btn secondary" href="legacy.html">ตั้งค่าระบบเดิม</a>');
+ return panel('<h2>ลงทะเบียนและกำหนดสิทธิ์ HR</h2><p>ส่งลิงก์นี้ให้ HR เปิดด้วยบัญชี LINE ของตัวเอง แล้วกลับมาอนุมัติรายการด้านล่าง</p><a class="btn primary" href="?register=hr">ลิงก์ลงทะเบียน HR</a><p class="hr-line-id">'+esc(location.origin+location.pathname+'?register=hr')+'</p>')+window.KittyHRAccess.management(state.hrRegistrations)+panel('<a class="btn secondary" href="legacy.html">ตั้งค่าระบบเดิม</a>');
 }
 async function hrAccessDecision(button){
  const row=(state.hrRegistrations||[]).find(r=>r.id===button.dataset.registrationId);if(!row)return;

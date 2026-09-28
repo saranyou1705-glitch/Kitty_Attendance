@@ -1,4 +1,15 @@
 const {test}=require('node:test');
+test('HR entry opens Admin management without granting access and preserves registration through login',()=>{
+ const {run}=setup();
+ run("var location={search:'?register=hr',origin:'https://example.test',pathname:'/'}");
+ assert.equal(run("hrEntryRequested()"),true);
+ run("location.search=''");
+ assert.equal(run("hrEntryRequested()"),true);
+ assert.equal(run("hrEntryPage('admin')"),'settings');
+ assert.equal(run("hrEntryPage('employee')"),'hr-register');
+ assert.equal(run("hrEntryPage('hr')"),'dashboard');
+ assert(run("loginRedirect()").includes('register=hr'));
+});
 test('manager requests use compact tables preserving read buttons, reasons and history statuses',()=>{
  const {run}=setup();
  run("var rows=[{id:'one',kind:'correction',status:'PENDING',employee:{employee_code:'HO001',name:'Test'},work_date:'2026-09-26',requested_event_type:'OUT',reason:'<img src=x>',unread:true},{id:'two',kind:'leave',status:'APPROVED',employee:{name:'Other'},reason:'Long reason',unread:false}]");
