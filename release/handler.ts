@@ -6,6 +6,18 @@ export function createHandler(runtime:Runtime){
  if(base.protocol!=='https:'||base.hostname!=='rlqecfzddxpywbbbiirg.supabase.co')throw Error('INVALID_BACKEND');
  const legacyURL=new URL('/functions/v1/rapid-processor',base);
  const call=createGateway({
+  monthSchedules:async(actor,month)=>{
+   const read=async(path:string)=>{
+    const response=await fetcher(new URL(path,base),{headers:{apikey:runtime.serviceKey,Authorization:'Bearer '+runtime.serviceKey}});
+    if(!response.ok)throw Error('SERVICE_UNAVAILABLE');
+    const rows=await response.json();if(!Array.isArray(rows))throw Error('SERVICE_UNAVAILABLE');return rows;
+   };
+   const employees=await read('/rest/v1/employees?select=id&line_user_id=eq.'+encodeURIComponent(actor));
+   if(employees.length!==1)throw Error('EMPLOYEE_REQUIRED');
+   const [year,number]=month.split('-').map(Number);
+   const end=number===12?`${year+1}-01-01`:`${year}-${String(number+1).padStart(2,'0')}-01`;
+   return read('/rest/v1/employee_schedules?select=work_date,schedule_status,required_hours&employee_id=eq.'+encodeURIComponent(employees[0].id)+'&work_date=gte.'+month+'-01&work_date=lt.'+end+'&order=work_date.asc');
+  },
   driverWorkDate:async actor=>{
    const read=async(path:string)=>{
     const response=await fetcher(new URL(path,base),{headers:{apikey:runtime.serviceKey,Authorization:'Bearer '+runtime.serviceKey}});

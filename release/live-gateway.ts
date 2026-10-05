@@ -8,6 +8,7 @@ type Dependencies = {
  overtime?:(actor:string,operation:string,payload:Record<string,unknown>)=>Promise<any>;
  employee?:(actor:string,operation:string,payload:Record<string,unknown>)=>Promise<any>;
  driverWorkDate?:(actor:string)=>Promise<string|null>;
+ monthSchedules?:(actor:string,month:string)=>Promise<any[]>;
 };
 export function createGateway(deps:Dependencies){
  return async function handle(token:string,action:string,body:Record<string,any>={}){
@@ -54,6 +55,16 @@ const requests:Record<string,string>={live_request_history:'history',live_reques
    if(Object.keys(body).some(k=>!readFields[action].includes(k)))throw Error('INVALID_FIELDS');
    if(body.activeShift!==undefined&&typeof body.activeShift!=='boolean')throw Error('INVALID_FIELDS');
    const result=await deps.legacy(token,action,action==='today'?{date:body.date}:body);
+   if(action==='employee_month'){
+    if(!deps.monthSchedules)throw Error('SERVICE_UNAVAILABLE');
+    const month=body.month||result.month;
+    if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(month||''))throw Error('INVALID_DATE');
+    const schedules=await deps.monthSchedules(profile.userId,month);
+    const rows=new Map((result.rows||[]).map((r:any)=>[r.work_date,r]));
+    // Retain recorded attendance unchanged; add actual scheduled days that the legacy endpoint omitted.
+    for(const schedule of schedules)if(!rows.has(schedule.work_date))rows.set(schedule.work_date,schedule);
+    return {...result,rows:[...rows.values()].sort((a:any,b:any)=>String(b.work_date).localeCompare(String(a.work_date)))};
+   }
    if(action==='today'&&body.activeShift===true&&result.employee?.attendance_mode==='DRIVER'){
     if(!deps.driverWorkDate)throw Error('SERVICE_UNAVAILABLE');
     const openDate=await deps.driverWorkDate(profile.userId);

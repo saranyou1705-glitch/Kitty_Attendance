@@ -15,6 +15,22 @@ function setup(clockEnabled=false){
  }});return {handler,calls};
 }
 const body={eventType:'IN',latitude:13,longitude:100,gpsAccuracy:10};
+test('monthly schedule read is own-employee scoped, includes future days and rolls December into January',async()=>{
+ const calls=[];let fail=false;
+ const handler=createHandler({url:'https://rlqecfzddxpywbbbiirg.supabase.co',serviceKey:'key',clockEnabled:true,fetcher:async(url,opt)=>{
+  const u=String(url);calls.push(u);
+  if(u.includes('api.line.me'))return Response.json({userId:'verified-self'});
+  if(u.includes('/rpc/'))return Response.json({ok:true,role:'EMPLOYEE'});
+  if(u.includes('/rest/v1/employees?'))return Response.json([{id:'self-id'}]);
+  if(u.includes('/rest/v1/employee_schedules?'))return fail?Response.json({}, {status:503}):Response.json([{work_date:'2026-12-31',schedule_status:'WORK',required_hours:9}]);
+  return Response.json({ok:true,month:'2026-12',rows:[]});
+ }});
+ const result=await (await handler(req('employee_month',{month:'2026-12'}))).json();
+ assert.equal(result.rows[0].work_date,'2026-12-31');assert.equal(result.rows[0].first_in_at,undefined);
+ const url=calls.find(u=>u.includes('/employee_schedules?'));assert(url.includes('employee_id=eq.self-id'));assert(url.includes('work_date=gte.2026-12-01'));assert(url.includes('work_date=lt.2027-01-01'));assert(!url.includes('work_date=lte.'));
+ assert(calls.some(u=>u.includes('line_user_id=eq.verified-self')));
+ fail=true;assert.equal((await handler(req('employee_month',{month:'2026-12'}))).status,503);
+});
 test('Driver shift lookup scopes real events to verified employee and ignores break events',async()=>{
  let closed=false;const reads=[];
  const handler=createHandler({url:'https://rlqecfzddxpywbbbiirg.supabase.co',serviceKey:'key',clockEnabled:true,fetcher:async(url,opt)=>{

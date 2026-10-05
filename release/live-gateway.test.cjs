@@ -1,4 +1,17 @@
 const {test}=require('node:test');
+test('calendar adds real future schedules without overwriting attendance or fabricating missing dates',async()=>{
+ const historical={work_date:'2026-10-05',schedule_status:'WORK',first_in_at:'2026-10-05T01:27:00Z',paid_work_hours:5};
+ const {handle}=setup('EMPLOYEE',{legacy:async()=>({ok:true,month:'2026-10',rows:[historical]}),monthSchedules:async(actor,month)=>{
+  assert.equal(actor,'verified-line');assert.equal(month,'2026-10');
+  return [{work_date:'2026-10-05',schedule_status:'WORK'},{work_date:'2026-10-06',schedule_status:'WORK'},{work_date:'2026-10-11',schedule_status:'OFF'}];
+ }});
+ const result=await handle('token','employee_month',{month:'2026-10'});
+ assert.equal(result.rows.length,3);assert.equal(result.rows.find(r=>r.work_date==='2026-10-05'),historical);
+ assert.equal(result.rows.find(r=>r.work_date==='2026-10-06').first_in_at,undefined);
+ assert.equal(result.rows.find(r=>r.work_date==='2026-10-11').schedule_status,'OFF');
+ assert(!result.rows.some(r=>r.work_date==='2026-10-07'));
+ await assert.rejects(handle('token','employee_month',{month:'2026-10',employeeId:'someone-else'}),/INVALID_FIELDS/);
+});
 test('Driver today follows open shift; writes verify same shift and retain original event time',async()=>{
  const writes=[];const {handle}=setup('EMPLOYEE',{driverWorkDate:async()=> '2026-10-04',legacy:async(token,action,body)=>{
   if(action==='bootstrap')return {ok:true,employee:{active:true,attendance_mode:'DRIVER'}};
