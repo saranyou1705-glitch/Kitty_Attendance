@@ -1,4 +1,10 @@
 const {test}=require('node:test');
+test('BA controls precede summary, branch names use snapshot and unsupported OT is absent',async()=>{
+ const {run}=setup();run("state.boot={employee:{id:'ba',attendance_mode:'MULTI_BRANCH',active:true}};state.baOffices=[{id:'branch',name:'สาขาทดสอบ'}];ownOtStatus=async()=>'';api=async()=>({ok:true,employee:state.boot.employee,events:[],daily:null})");
+ const html=await run('clockView()');assert(html.indexOf('data-clock-event="BRANCH_IN"')<html.indexOf('clock-summary'));assert.equal((html.match(/data-clock-event="BRANCH_IN"/g)||[]).length,1);
+ assert.equal(run('overtimeView()'),'');const form=run('correctionView()');assert(form.includes('เข้าสาขา'));assert(form.includes('จบวันทำงาน'));assert(form.includes('name="officeId"'));assert(form.includes('ส่งให้แอดมิน'));
+ const history=run("occupationalView(state.boot.employee,{events:[{event_type:'BRANCH_IN',office_id:'raw-id',office_name_snapshot:'สาขาทดสอบ'}]},false,true)");assert(history.includes('สาขาทดสอบ'));assert(!history.includes('raw-id'));assert(!history.includes('data-clock-event'));
+});
 test('office changes use production endpoint with HR scope and no client actor',async()=>{
  const calls=[];const {run}=setup(async(url,opt)=>{calls.push({url,body:JSON.parse(opt.body)});return {ok:true,json:async()=>({ok:true,officeId:'office'})}});
  run("state.role='hr'");await run("api('live_employee_office',{employeeId:'employee'})");
