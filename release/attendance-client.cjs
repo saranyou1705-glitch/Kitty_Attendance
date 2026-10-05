@@ -40,6 +40,7 @@ function createRecorder({loadToday,getPosition,record,clock=()=>new Date()}) {
         if(!Number.isFinite(coords.latitude)||Math.abs(coords.latitude)>90||!Number.isFinite(coords.longitude)||Math.abs(coords.longitude)>180||!Number.isFinite(coords.accuracy)||coords.accuracy<0)throw Error('INVALID_LOCATION');
         const at=clock();
         const payload={eventType,eventAt:at.toISOString(),workDate:new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Bangkok',year:'numeric',month:'2-digit',day:'2-digit'}).format(at),latitude:coords.latitude,longitude:coords.longitude,gpsAccuracy:coords.accuracy};
+        if(today.employee.attendance_mode==='DRIVER'&&/^\d{4}-\d{2}-\d{2}$/.test(today.workDate||''))payload.workDate=today.workDate;
         // Deliberately no retries: a timeout may already have inserted the event.
         uncertain=true;
         const result=await record(payload);

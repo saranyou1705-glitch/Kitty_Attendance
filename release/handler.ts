@@ -6,6 +6,20 @@ export function createHandler(runtime:Runtime){
  if(base.protocol!=='https:'||base.hostname!=='rlqecfzddxpywbbbiirg.supabase.co')throw Error('INVALID_BACKEND');
  const legacyURL=new URL('/functions/v1/rapid-processor',base);
  const call=createGateway({
+  driverWorkDate:async actor=>{
+   const read=async(path:string)=>{
+    const response=await fetcher(new URL(path,base),{headers:{apikey:runtime.serviceKey,Authorization:'Bearer '+runtime.serviceKey}});
+    if(!response.ok)throw Error('SERVICE_UNAVAILABLE');
+    const rows=await response.json();if(!Array.isArray(rows))throw Error('SERVICE_UNAVAILABLE');return rows;
+   };
+   const employees=await read('/rest/v1/employees?select=id,attendance_mode,active&line_user_id=eq.'+encodeURIComponent(actor));
+   if(employees.length!==1||!employees[0].active||employees[0].attendance_mode!=='DRIVER')throw Error('ACTIVE_EMPLOYEE_REQUIRED');
+   const events=await read('/rest/v1/attendance_events?select=event_type,work_date,event_at&employee_id=eq.'+encodeURIComponent(employees[0].id)+'&event_type=in.(IN,OUT)&order=event_at.desc,created_at.desc&limit=1');
+   const latest=events[0];
+   if(latest?.event_type!=='IN')return null;
+   if(!/^\d{4}-\d{2}-\d{2}$/.test(latest.work_date||'')||!Number.isFinite(Date.parse(latest.event_at))||Date.parse(latest.event_at)>Date.now())throw Error('SERVICE_UNAVAILABLE');
+   return latest.work_date;
+  },
   employee:async(actor,operation,payload)=>{
    const rpc=operation==='live_employee_activate'?'kitty_live_activate_employee':'kitty_live_employee_office';
    const response=await fetcher(new URL('/rest/v1/rpc/'+rpc,base),{method:'POST',headers:{apikey:runtime.serviceKey,Authorization:'Bearer '+runtime.serviceKey,'Content-Type':'application/json'},body:JSON.stringify({actor,payload})});

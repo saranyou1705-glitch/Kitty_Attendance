@@ -15,6 +15,20 @@ function setup(clockEnabled=false){
  }});return {handler,calls};
 }
 const body={eventType:'IN',latitude:13,longitude:100,gpsAccuracy:10};
+test('Driver shift lookup scopes real events to verified employee and ignores break events',async()=>{
+ let closed=false;const reads=[];
+ const handler=createHandler({url:'https://rlqecfzddxpywbbbiirg.supabase.co',serviceKey:'key',clockEnabled:true,fetcher:async(url,opt)=>{
+  const u=String(url);reads.push(u);
+  if(u.includes('api.line.me'))return Response.json({userId:'verified-driver'});
+  if(u.includes('/rpc/'))return Response.json({ok:true,role:'EMPLOYEE'});
+  if(u.includes('/rest/v1/employees?'))return Response.json([{id:'own-id',active:true,attendance_mode:'DRIVER'}]);
+  if(u.includes('/rest/v1/attendance_events?'))return Response.json([{event_type:closed?'OUT':'IN',work_date:'2026-10-04',event_at:'2026-10-04T10:00:00Z'}]);
+  const p=JSON.parse(opt.body);return Response.json({ok:true,employee:{active:true,attendance_mode:'DRIVER'},events:[],date:p.date});
+ }});
+ let result=await (await handler(req('today',{date:'2026-10-05',activeShift:true}))).json();assert.equal(result.workDate,'2026-10-04');assert.equal(result.date,'2026-10-04');
+ assert(reads.some(u=>u.includes('line_user_id=eq.verified-driver')));assert(reads.some(u=>u.includes('employee_id=eq.own-id&event_type=in.(IN,OUT)')));
+ closed=true;result=await (await handler(req('today',{date:'2026-10-05',activeShift:true}))).json();assert.notEqual(result.workDate,'2026-10-04');
+});
 test('employee actions call fixed production RPC using verified LINE identity',async()=>{
  const {handler,calls}=setup();
  for(const action of ['live_employee_activate','live_employee_office'])assert.equal((await handler(req(action,{employeeId:'example'}))).status,200);

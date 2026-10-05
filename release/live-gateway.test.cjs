@@ -1,4 +1,16 @@
 const {test}=require('node:test');
+test('Driver today follows open shift; writes verify same shift and retain original event time',async()=>{
+ const writes=[];const {handle}=setup('EMPLOYEE',{driverWorkDate:async()=> '2026-10-04',legacy:async(token,action,body)=>{
+  if(action==='bootstrap')return {ok:true,employee:{active:true,attendance_mode:'DRIVER'}};
+  if(action==='today')return {ok:true,employee:{active:true,attendance_mode:'DRIVER'},events:body.date==='2026-10-04'?[{event_type:'IN'}]:[]};
+  writes.push(body);return {ok:true};
+ }});
+ const shift=await handle('token','today',{date:'2026-10-05',activeShift:true});assert.equal(shift.workDate,'2026-10-04');assert.equal(shift.events[0].event_type,'IN');
+ const history=await handle('token','today',{date:'2026-10-03'});assert.equal(history.workDate,undefined);assert.equal(history.events.length,0);
+ const clock={eventType:'OUT',workDate:'2026-10-04',eventAt:'2026-10-04T18:10:00Z',latitude:13,longitude:100,gpsAccuracy:5};
+ await handle('token','record',clock);assert.deepEqual(JSON.parse(JSON.stringify(writes[0])),clock);
+ await assert.rejects(handle('token','record',{...clock,workDate:'2026-10-03'}),/INVALID_DRIVER_ACTION/);assert.equal(writes.length,1);
+});
 test('weekend WFH uses authenticated own employee and rejects forged fields or existing clocks',async()=>{
  const RealDate=Date;
  ctx.Date=class extends RealDate{constructor(...a){super(...(a.length?a:['2026-09-26T03:00:00Z']))}};

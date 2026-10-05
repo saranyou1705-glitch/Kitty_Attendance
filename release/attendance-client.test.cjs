@@ -25,6 +25,14 @@ test('Driver work and break controls remain independent',()=>{
  assert.deepEqual(allowedActions('DRIVER',events('IN','BREAK_OUT')),['OUT','BREAK_IN']);
  assert.deepEqual(allowedActions('DRIVER',events('IN','OUT')),[]);
 });
+test('overnight Driver checkout retains shift date and actual timestamp after midnight',async()=>{
+ const {recorder,sent}=harness({loadToday:async()=>({employee:{active:true,attendance_mode:'DRIVER'},workDate:'2026-09-24',events:events('IN')})});
+ await recorder.submit('OUT');assert.equal(sent[0].workDate,'2026-09-24');assert.equal(sent[0].eventAt,'2026-09-24T18:00:00.000Z');
+});
+test('closed Driver shift cannot be checked out again',async()=>{
+ const {recorder,sent}=harness({loadToday:async()=>({employee:{active:true,attendance_mode:'DRIVER'},workDate:'2026-09-24',events:events('IN','OUT')})});
+ await assert.rejects(recorder.submit('OUT'),/ACTION_NOT_AVAILABLE/);assert.equal(sent.length,0);
+});
 function harness(overrides={}){
  const sent=[];const today={employee:{active:true,attendance_mode:'STANDARD'},events:[]};
  const recorder=createRecorder({loadToday:async()=>today,getPosition:async()=>({coords:{latitude:13,longitude:100,accuracy:5}}),record:async p=>{sent.push(p);return {ok:true}},clock:()=>new Date('2026-09-24T18:00:00Z'),...overrides});

@@ -7,6 +7,7 @@ type Dependencies = {
  requests?:(actor:string,operation:string,payload:Record<string,unknown>)=>Promise<any>;
  overtime?:(actor:string,operation:string,payload:Record<string,unknown>)=>Promise<any>;
  employee?:(actor:string,operation:string,payload:Record<string,unknown>)=>Promise<any>;
+ driverWorkDate?:(actor:string)=>Promise<string|null>;
 };
 export function createGateway(deps:Dependencies){
  return async function handle(token:string,action:string,body:Record<string,any>={}){
@@ -48,10 +49,19 @@ const requests:Record<string,string>={live_request_history:'history',live_reques
    return {...original,profile,isAdmin:role==='ADMIN'||role==='HR',adminRole:role==='EMPLOYEE'?null:role,hrRegistration:identity.registration||null};
   }
   // Only own attendance endpoints can pass through. Legacy server derives employee from LINE token.
-  const readFields:Record<string,string[]>={today:['date'],employee_month:['month']};
+  const readFields:Record<string,string[]>={today:['date','activeShift'],employee_month:['month']};
   if(Object.prototype.hasOwnProperty.call(readFields,action)){
    if(Object.keys(body).some(k=>!readFields[action].includes(k)))throw Error('INVALID_FIELDS');
-   return deps.legacy(token,action,body);
+   if(body.activeShift!==undefined&&typeof body.activeShift!=='boolean')throw Error('INVALID_FIELDS');
+   const result=await deps.legacy(token,action,action==='today'?{date:body.date}:body);
+   if(action==='today'&&body.activeShift===true&&result.employee?.attendance_mode==='DRIVER'){
+    if(!deps.driverWorkDate)throw Error('SERVICE_UNAVAILABLE');
+    const openDate=await deps.driverWorkDate(profile.userId);
+    const date=openDate||new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Bangkok',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+    const shift=date===body.date?result:await deps.legacy(token,'today',{date});
+    return {...shift,workDate:date};
+   }
+   return result;
   }
   if(action==='self_weekend_wfh'){
    if(Object.keys(body).some(k=>k!=='date'))throw Error('INVALID_FIELDS');
@@ -72,6 +82,14 @@ const requests:Record<string,string>={live_request_history:'history',live_reques
    if(Object.keys(body).some(k=>!fields.includes(k)))throw Error('INVALID_FIELDS');
    const boot=await deps.legacy(token,'bootstrap',{});
    if(!boot?.ok||!boot.employee?.active)throw Error('ACTIVE_EMPLOYEE_REQUIRED');
+   if(boot.employee.attendance_mode==='DRIVER'){
+    if(!deps.driverWorkDate)throw Error('SERVICE_UNAVAILABLE');
+    const openDate=await deps.driverWorkDate(profile.userId);
+    const date=openDate||new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Bangkok',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+    // The server chooses the open shift, never a client-supplied historical date.
+    if(body.workDate!==date)throw Error('INVALID_DRIVER_ACTION');
+    body={...body,workDate:date};
+   }
    if(['STANDARD','STOCK_REFILL'].includes(boot.employee.attendance_mode)){
     const today=await deps.legacy(token,'today',{date:body.workDate});
     if(!today?.ok||!Array.isArray(today.events))throw Error('SERVICE_UNAVAILABLE');
