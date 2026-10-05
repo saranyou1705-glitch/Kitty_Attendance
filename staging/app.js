@@ -63,6 +63,7 @@ async function refreshClock(){
 function table(headers,rows){return `<div class="data-scroll"><table class="data-table"><thead><tr>${headers.map(h=>`<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${r.map(c=>`<td>${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>${rows.length?'':empty('ไม่พบข้อมูลในช่วงที่เลือก')}`}
 function errorMessage(error){const m=String(error?.message||error);if(m==='Failed to fetch')return 'เชื่อมต่อข้อมูลไม่สำเร็จ กรุณาลองใหม่หรือตรวจอินเทอร์เน็ต';if(m==='EMPLOYEE_NOT_REGISTERED')return 'บัญชี LINE นี้ยังไม่ผูกกับพนักงาน';if(m==='INVALID_LINE_TOKEN'||m==='MISSING_LINE_TOKEN')return 'การเข้าสู่ระบบหมดอายุ กรุณาเข้าสู่ระบบ LINE อีกครั้ง';return m}
 async function api(action,payload={}){
+ if(action.startsWith('live_employee_'))return employeeApi(action,payload);
  if(CONFIG.requestsLive&&action.startsWith('staging_ot_'))action=action.replace('staging_ot_','live_ot_');
  if(CONFIG.requestsLive&&action.startsWith('staging_request_'))action=action.replace('staging_request_','live_request_');
  const token=window.liff?.getAccessToken();if(!token)throw new Error('MISSING_LINE_TOKEN');
@@ -183,7 +184,7 @@ async function signupView(){
  if(CONFIG.requestsLive&&new URLSearchParams(location.search).get('register')==='hr')return window.KittyHRAccess.registration(state.boot.hrRegistration);
 
  const d=await api('staging_people_mine'),r=d.registration;
- if(r)return panel(`<h2>${r.status==='READY'?'HR อนุมัติแล้ว':'ส่งชื่อให้ HR แล้ว'}</h2><p>${esc(r.name)}</p><p>${r.status==='READY'?'ข้อมูลอยู่ในชุดทดลอง รอเปิดใช้งานจริง':'รอ HR ตรวจสอบและเติมข้อมูลพนักงาน'}</p><button class="btn secondary" data-action="retry">ตรวจสถานะ</button>`);
+ if(r)return panel(`<h2>${r.status==='READY'?'HR ตรวจข้อมูลแล้ว':'ส่งชื่อให้ HR แล้ว'}</h2><p>${esc(r.name)}</p><p>${r.status==='READY'?'รอ HR เลือกสำนักงานและเปิดบัญชีพนักงาน':'รอ HR ตรวจสอบและเติมข้อมูลพนักงาน'}</p><button class="btn secondary" data-action="reconnect">ตรวจสถานะ / เข้าระบบ</button>`);
  return panel('<h2>ลงทะเบียนพนักงานใหม่</h2><form id="signupForm" class="request-form"><label>ชื่อ–นามสกุล<input name="name" maxlength="160" required autocomplete="name"></label><p>ส่งให้ HR Head Office กรอกข้อมูลส่วนที่เหลือ · ชุดทดลอง</p><button class="btn primary" type="submit">ส่งชื่อให้ HR</button></form>');
 }
 async function submitSignup(form){
@@ -210,13 +211,35 @@ async function personnelEditor(target={}){
   $('#actionTitle').textContent=target.registrationId?'เติมข้อมูลพนักงานใหม่':target.employeeId||p.id?'แก้ไขข้อมูลพนักงาน':'เพิ่มพนักงาน Head Office';
   $('#actionBody').innerHTML=`<form id="personnelForm" class="request-form"><label>ชื่อ–นามสกุล<input name="name" value="${esc(p.name||'')}" maxlength="160" required></label><label>รหัสพนักงาน<input name="employee_code" value="${esc(p.employee_code||'')}" placeholder="HO027" ${p.employee_id||p.id?'readonly':''} pattern="[A-Za-z]{2,8}[0-9]{1,8}" required></label><label>แผนก<input name="department" value="${esc(p.department||'')}" maxlength="160"></label><label>ตำแหน่ง<input name="position" value="${esc(p.position||'')}" maxlength="160"></label><label>วันที่เริ่มงาน<input type="date" name="start_date" value="${esc(p.start_date||'')}"></label><fieldset class="weekly-dayoffs"><legend>วันหยุดประจำสัปดาห์</legend>${weekdays.map(day=>`<label><input type="checkbox" name="weekly_dayoffs" value="${day}" ${(p.weekly_dayoffs||[]).includes(day)?'checked':''}><span>${userLabel(day)}</span></label>`).join('')}</fieldset>${d.line_user_id?`<p>LINE User ID : ${esc(d.line_user_id)}</p>`:''}<p class="panel-sub">บันทึกในชุดทดลอง ไม่เปลี่ยนบัญชี สิทธิ์ หรือตารางงานระบบเดิม</p><button type="submit" class="btn primary">${target.registrationId?'บันทึกและอนุมัติพนักงานใหม่':'บันทึกข้อมูลทดลอง'}</button></form>`;
   $('#actionDialog').showModal();
+  if(CONFIG.requestsLive)await showEmployeeOffice(p,target);
   if(target.registrationId){await api('staging_people_read',{registrationId:target.registrationId});await requestQueue()}
  }catch(e){toast(peopleError(e))}
 }
 async function savePersonnel(form){
  const button=form.querySelector('button[type="submit"]'),fd=new FormData(form);button.disabled=true;
  const data={...state.personnelEdit,name:fd.get('name'),employee_code:fd.get('employee_code'),department:fd.get('department'),position:fd.get('position'),start_date:fd.get('start_date'),weekly_dayoffs:fd.getAll('weekly_dayoffs')};
- try{await api('staging_people_save',data);$('#actionDialog').close();state.directory=null;await render();await requestQueue();toast('บันทึกข้อมูลพนักงานในชุดทดลองแล้ว')}catch(e){toast(peopleError(e))}finally{button.disabled=false}
+ try{const saved=await api('staging_people_save',data);$('#actionDialog').close();state.directory=null;await render();await requestQueue();if(CONFIG.requestsLive&&saved.profile?.registration_id&&!saved.profile.employee_id){await personnelEditor({profileId:saved.profile.id});toast('ข้อมูลครบแล้ว กรุณาเลือกสำนักงานและเปิดบัญชีจริง')}else toast('บันทึกข้อมูลพนักงานแล้ว')}catch(e){toast(peopleError(e))}finally{button.disabled=false}
+}
+
+async function employeeApi(action,payload={}){
+ const token=window.liff?.getAccessToken();if(!token)throw Error('MISSING_LINE_TOKEN');
+ const response=await fetch(`${CONFIG.liveApi}?action=${encodeURIComponent(action)}`,{method:'POST',cache:'no-store',headers:{'Content-Type':'application/json','x-line-access-token':token},body:JSON.stringify({...payload,...(state.role==='hr'?{previewRole:'HR'}:{})})});
+ const result=await response.json();if(!response.ok||!result.ok)throw Error(result.error||'SERVICE_UNAVAILABLE');return result;
+}
+async function showEmployeeOffice(profile,target){
+ const employeeId=profile.employee_id||target.employeeId,registrationId=profile.registration_id;
+ if(!employeeId&&!registrationId)return;
+ const dir=await directory(),current=employeeId?await api('live_employee_office',{employeeId}):{officeId:null};
+ state.officeEdit={employeeId,registrationId,version:profile.version,previousOfficeId:current.officeId};
+ const options=(dir.offices||[]).filter(o=>o.active!==false).map(o=>`<option value="${esc(o.id)}" ${o.id===current.officeId?'selected':''}>${esc(o.name)}</option>`).join('');
+ $('#actionBody').insertAdjacentHTML('beforeend',`<form id="employeeOfficeForm" class="request-form"><h3>สำนักงาน / สถานที่ลงเวลา</h3><label>สำนักงาน<select name="officeId" required><option value="">เลือกสำนักงาน</option>${options}</select></label><p>${employeeId?'เปลี่ยนสถานที่ลงเวลาในระบบจริง โดยไม่แก้ประวัติการลงเวลาเดิม':'เปิดบัญชีจริงโดยใช้ LINE ที่พนักงานส่งลงทะเบียนมา'}</p><button type="submit" class="btn primary">${employeeId?'บันทึกสำนักงาน':'เปิดบัญชีพนักงานจริง'}</button></form>`);
+}
+async function saveEmployeeOffice(form){
+ const b=form.querySelector('button'),ctx=state.officeEdit,officeId=new FormData(form).get('officeId');b.disabled=true;
+ try{
+  await api(ctx.employeeId?'live_employee_office':'live_employee_activate',ctx.employeeId?{employeeId:ctx.employeeId,officeId,previousOfficeId:ctx.previousOfficeId}:{registrationId:ctx.registrationId,version:ctx.version,officeId});
+  $('#actionDialog').close();state.directory=null;await render();toast(ctx.employeeId?'บันทึกสำนักงานในระบบจริงแล้ว':'เปิดบัญชีจริงแล้ว พนักงานเข้าระบบด้วย LINE ได้');
+ }catch(e){toast(({OFFICE_REQUIRED:'กรุณาเลือกสำนักงานที่ใช้งานอยู่',EMPLOYEE_CONFLICT:'มีบัญชีหรือรหัสนี้แล้ว กรุณาตรวจสอบก่อน',APPROVAL_REQUIRED:'กรุณาบันทึกและอนุมัติข้อมูลก่อน'})[e.message]||peopleError(e))}finally{b.disabled=false}
 }
 
 function filteredPeople(){const scope=state.employeeScope||'active',query=(state.employeeSearch||'').trim().toLowerCase();return (state.peopleRows||[]).filter(e=>(scope==='all'||(scope==='inactive'?e.active===false:e.active===true))&&person(e).toLowerCase().includes(query))}
@@ -651,6 +674,7 @@ document.addEventListener('submit',e=>{
  if(e.target.id==='hrRegistrationForm'){e.preventDefault();submitHRRegistration(e.target);return}
  if(e.target.id==='signupForm'){e.preventDefault();submitSignup(e.target);return}
  if(e.target.id==='personnelForm'){e.preventDefault();savePersonnel(e.target);return}
+ if(e.target.id==='employeeOfficeForm'){e.preventDefault();saveEmployeeOffice(e.target);return}
  if(!['leaveForm','correctionForm','overtimeForm'].includes(e.target.id))return;e.preventDefault();
  if(!state.boot?.employee){toast('บัญชีนี้ยังไม่ผูกกับพนักงาน');return}
  const form=e.target,data=Object.fromEntries(new FormData(form));if(!data.reason.trim()){toast('กรุณาระบุเหตุผล');return}

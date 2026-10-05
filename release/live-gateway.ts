@@ -6,12 +6,17 @@ type Dependencies = {
  legacy:(token:string,action:string,payload:Record<string,unknown>)=>Promise<any>;
  requests?:(actor:string,operation:string,payload:Record<string,unknown>)=>Promise<any>;
  overtime?:(actor:string,operation:string,payload:Record<string,unknown>)=>Promise<any>;
+ employee?:(actor:string,operation:string,payload:Record<string,unknown>)=>Promise<any>;
 };
 export function createGateway(deps:Dependencies){
  return async function handle(token:string,action:string,body:Record<string,any>={}){
   if(!token)throw Error('MISSING_LINE_TOKEN');
   const profile=await deps.verifyLine(token);
   if(!profile?.userId)throw Error('INVALID_LINE_TOKEN');
+  if(['live_employee_activate','live_employee_office'].includes(action)){
+   if(!deps.employee)throw Error('ACTION_NOT_CONNECTED');
+   return deps.employee(profile.userId,action,body);
+  }
   const roles:Record<string,string>={hr_register:'register',admin_hr_list:'list',admin_hr_grant:'grant',admin_hr_reject:'reject',admin_hr_revoke:'revoke'};
   if(Object.prototype.hasOwnProperty.call(roles,action)){
    return deps.access(profile.userId,roles[action],body);

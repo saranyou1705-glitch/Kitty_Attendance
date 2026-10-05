@@ -15,6 +15,14 @@ function setup(clockEnabled=false){
  }});return {handler,calls};
 }
 const body={eventType:'IN',latitude:13,longitude:100,gpsAccuracy:10};
+test('employee actions call fixed production RPC using verified LINE identity',async()=>{
+ const {handler,calls}=setup();
+ for(const action of ['live_employee_activate','live_employee_office'])assert.equal((await handler(req(action,{employeeId:'example'}))).status,200);
+ const rpc=calls.filter(c=>c.url.includes('/rpc/'));
+ assert.equal(rpc.length,2);assert(rpc[0].url.endsWith('/kitty_live_activate_employee'));assert(rpc[1].url.endsWith('/kitty_live_employee_office'));
+ for(const call of rpc)assert.equal(JSON.parse(call.options.body).actor,'verified');
+ assert.equal((await handler(req('live_employee_delete',{}))).status,400);
+});
 function req(action,payload=body,origin='https://saranyou1705-glitch.github.io'){
  return new Request('https://app.test/?action='+action,{method:'POST',headers:{origin,'Content-Type':'application/json','x-line-access-token':'caller-token'},body:JSON.stringify(payload)});
 }

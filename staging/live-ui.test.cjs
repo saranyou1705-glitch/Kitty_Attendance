@@ -1,4 +1,14 @@
 const {test}=require('node:test');
+test('office changes use production endpoint with HR scope and no client actor',async()=>{
+ const calls=[];const {run}=setup(async(url,opt)=>{calls.push({url,body:JSON.parse(opt.body)});return {ok:true,json:async()=>({ok:true,officeId:'office'})}});
+ run("state.role='hr'");await run("api('live_employee_office',{employeeId:'employee'})");
+ assert(calls[0].url.includes('kitty-attendance-live?action=live_employee_office'));
+ assert.equal(calls[0].body.previewRole,'HR');assert.equal(calls[0].body.actor,undefined);
+});
+test('approved signup refreshes authentication instead of rendering stale bootstrap',async()=>{
+ const {run}=setup(async()=>({ok:true,json:async()=>({ok:true,registration:{status:'READY',name:'Aoy'}})}));
+ const html=await run('signupView()');assert(html.includes('data-action="reconnect"'));assert(!html.includes('ข้อมูลอยู่ในชุดทดลอง'));
+});
 test('HR entry opens Admin management without granting access and preserves registration through login',()=>{
  const {run}=setup();
  run("var location={search:'?register=hr',origin:'https://example.test',pathname:'/'}");
